@@ -37,6 +37,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Local Network access is denied (`LocalNetwork`): the menu says so.
     private var networkDenied = false
     private var menuIsOpen = false
+    /// Refreshes the open "配对新设备" submenu; what it shows now.
+    private var nearbyRefresh: Task<Void, Never>?
+    private var shownNearby: [String] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         place(on: homeScreen)
@@ -273,17 +276,44 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if menu === statusItem?.menu {
             buildMainMenu(menu)
             checkLocalNetwork()
+            // Announce now, so nearby devices have answered by the time the
+            // pointer reaches "配对新设备".
+            core?.call("devices.refresh")
         } else {
-            buildPairingMenu(menu)
+            let nearby = nearbyDevices()
+            shownNearby = nearby.map(\.menuKey)
+            buildPairingMenu(menu, nearby: nearby)
         }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        if menu === statusItem?.menu { menuIsOpen = true }
+        guard menu !== statusItem?.menu else {
+            menuIsOpen = true
+            return
+        }
+        // Nearby devices only count while they were heard from in the last
+        // minute, and answers to the announcement take a moment: keep asking
+        // while the submenu is open.
+        nearbyRefresh?.cancel()
+        nearbyRefresh = Task { [weak self, weak menu] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, let menu, !Task.isCancelled else { return }
+                let nearby = self.nearbyDevices()
+                guard nearby.map(\.menuKey) != self.shownNearby else { continue }
+                self.shownNearby = nearby.map(\.menuKey)
+                menu.removeAllItems()
+                self.buildPairingMenu(menu, nearby: nearby)
+            }
+        }
     }
 
     func menuDidClose(_ menu: NSMenu) {
-        if menu === statusItem?.menu { menuIsOpen = false }
+        if menu === statusItem?.menu {
+            menuIsOpen = false
+        } else {
+            nearbyRefresh?.cancel()
+        }
     }
 
     private func buildMainMenu(_ menu: NSMenu) {
@@ -328,15 +358,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
-    /// Nearby devices that are not paired. Listing them also announces this
-    /// device, so reopening the menu finds newcomers.
-    private func buildPairingMenu(_ menu: NSMenu) {
-        guard let core else { return }
-        let nearby = (try? core.call("discover.list", as: [DeviceInfo].self).get()) ?? []
+    /// Online devices that are not paired. Asking also announces this device.
+    private func nearbyDevices() -> [DeviceInfo] {
+        (try? core?.call("discover.list", as: [DeviceInfo].self).get()) ?? []
+    }
+
+    private func buildPairingMenu(_ menu: NSMenu, nearby: [DeviceInfo]) {
+        guard core != nil else { return }
         if nearby.isEmpty, networkDenied {
             addNetworkWarning(to: menu, "没有本地网络权限，搜索不到附近设备")
         } else if nearby.isEmpty {
-            menu.addItem(disabledItem("正在搜索附近设备…（稍后再打开此菜单）"))
+            menu.addItem(disabledItem("正在搜索附近设备…"))
         }
         for device in nearby {
             menu.addItem(actionItem(device.alias, #selector(startPairing(_:)), device.fingerprint))
@@ -401,6 +433,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
 private struct UnpairResult: Decodable {
     let wasPaired: Bool
+}
+
+private extension DeviceInfo {
+    /// What the pairing submenu shows of a device.
+    var menuKey: String { "\(fingerprint) \(alias)" }
 }
 
 enum Arguments {

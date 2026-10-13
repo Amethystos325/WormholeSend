@@ -10,8 +10,10 @@ import Network
 /// the discovery group, which sends nothing, and reads why its path is
 /// unusable.
 enum LocalNetwork {
-    /// Whether access is known to be denied. No answer within two seconds,
-    /// or a macOS without the setting, counts as allowed.
+    /// Whether access is denied: the path still says so after three seconds
+    /// (or the connection failed for that reason). The first launch of a
+    /// newly signed build briefly reports "Local network prohibited" even
+    /// when access is allowed.
     static func isDenied() async -> Bool {
         await withCheckedContinuation { continuation in
             Probe(continuation).start()
@@ -46,14 +48,21 @@ private final class Probe: @unchecked Sendable {
             switch state {
             case .ready:
                 finish(denied: false)
-            case .waiting, .failed:
-                finish(denied: connection.currentPath?.unsatisfiedReason == .localNetworkDenied)
+            case .failed:
+                finish(denied: isDenied)
             default:
+                // Waiting can be momentary while the path is evaluated, or
+                // last until the user answers the system prompt: the
+                // connection becomes ready if access is allowed in time.
                 break
             }
         }
         connection.start(queue: queue)
-        queue.asyncAfter(deadline: .now() + 2) { [self] in finish(denied: false) }
+        queue.asyncAfter(deadline: .now() + 3) { [self] in finish(denied: isDenied) }
+    }
+
+    private var isDenied: Bool {
+        connection.currentPath?.unsatisfiedReason == .localNetworkDenied
     }
 
     private func finish(denied: Bool) {
