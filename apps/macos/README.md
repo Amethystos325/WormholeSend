@@ -23,6 +23,12 @@ Sounds (design doc 2.5) are the app's own files, the same as on Windows: `assets
 
 The first launch shows a welcome that explains the Local Network prompt macOS 15+ shows next (to see it again: `defaults delete app.wormholesend.mac welcomed`). Without that permission the system silently drops discovery and outgoing transfers, so the app checks it at start and whenever the menu opens. When it is denied, the menu bar icon gets an amber dot, and the menu explains why and links to the setting.
 
+## Languages
+
+English, Chinese and Japanese, the same as the core and the Windows app. macOS picks the language from the user's preferred languages among the bundle's `en`, `zh-Hans` and `ja` folders (`Resources/*.lproj`, which also hold the Local Network prompt's text). A single app can be given another language in System Settings › General › Language & Region › Applications. The core is started in the same language (`language` in the `wh_start` config), so its messages match. Every string has all three versions at the call site: `tr("中文", "English", "日本語")` (`L10n.swift`). One-line states widen to fit their text, up to 528 pt.
+
+To check another language, add `-AppleLanguages "(ja)"` (or `en`, `zh-Hans`) to the launch arguments, e.g. with `--demo`.
+
 ## Demo mode (pinned to a single state with sample data; the core does not start)
 
 ```bash

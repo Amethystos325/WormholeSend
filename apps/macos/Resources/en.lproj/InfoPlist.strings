@@ -1,0 +1,2 @@
+/* The Local Network prompt (macOS 15+). */
+"NSLocalNetworkUsageDescription" = "Used to find the computers you paired with on your local network and send files to them directly, without going through any server.";

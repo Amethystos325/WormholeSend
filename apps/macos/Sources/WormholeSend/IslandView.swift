@@ -127,7 +127,8 @@ struct IslandView: View {
         case .sending:
             if let transfer = model.transfer {
                 ProgressContent(
-                    device: transfer.device, title: "发送到 \(transfer.device.name)",
+                    device: transfer.device,
+                    title: tr("发送到 \(transfer.device.name)", "Sending to \(transfer.device.name)", "\(transfer.device.name) に送信中"),
                     progress: transfer.progress, detail: transfer.stats.line, onCancel: model.cancelTransfer)
             }
         case .awaiting:
@@ -144,22 +145,27 @@ struct IslandView: View {
             if let transfer = model.transfer {
                 StatusLine(
                     symbol: "checkmark.circle.fill", color: Palette.success,
-                    text: "已送达 \(transfer.device.name)", trailing: transfer.label)
+                    text: tr("已送达 \(transfer.device.name)", "Delivered to \(transfer.device.name)", "\(transfer.device.name) に届きました"),
+                    trailing: transfer.label)
             }
         case .failed(let reason, let canRetry):
             FailedContent(reason: reason, canRetry: canRetry, onRetry: model.retry)
-        case .refused(let name, let reason):
-            StatusLine(symbol: "nosign", color: Palette.warning, text: "\(name) \(reason)，未发送")
+        case .refused(let text):
+            StatusLine(symbol: "nosign", color: Palette.warning, text: text)
         case .receiving:
             if let transfer = model.transfer {
                 ReceivingContent(transfer: transfer, waiting: model.waitingCount)
             }
         case .interrupted(let reason):
-            StatusLine(symbol: "exclamationmark.triangle.fill", color: Palette.warning, text: "传输中断", trailing: reason)
+            StatusLine(
+                symbol: "exclamationmark.triangle.fill", color: Palette.warning,
+                text: tr("传输中断", "Transfer interrupted", "転送が中断されました"), trailing: reason)
         case .pairRequest(_, let alias, let code):
             PairRequestContent(alias: alias, code: code, onDecline: model.declinePair, onAccept: model.acceptPair)
         case .pairWaiting(let alias):
-            StatusLine(symbol: "clock", color: Palette.secondary, text: "等待 \(alias) 确认…")
+            StatusLine(
+                symbol: "clock", color: Palette.secondary,
+                text: tr("等待 \(alias) 确认…", "Waiting for \(alias) to confirm…", "\(alias) の確認を待っています…"))
         case .receiveRequest(let request):
             ReceiveRequestContent(request: request, onDecline: model.declineReceive, onAccept: model.acceptReceive)
         case .notice(let text, let detail, let success):
@@ -186,6 +192,8 @@ private struct HintContent: View {
             Text(text)
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(Color(white: 0.86))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity)
     }
@@ -227,10 +235,10 @@ private struct TargetContent: View {
             HStack(spacing: 12) {
                 Avatar(device: device, size: 44, highlighted: true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("松手发送到 \(device.name)")
+                    Text(releaseToSend(to: device.name))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Palette.text)
-                    Text("默认设备")
+                    Text(tr("默认设备", "Default device", "デフォルトのデバイス"))
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.secondary)
                 }
@@ -262,11 +270,11 @@ private struct MoreStrip: View {
                         .overlay(Circle().stroke(Palette.island, lineWidth: 1.5))
                 }
             }
-            Text("其他设备")
+            Text(tr("其他设备", "Other devices", "その他のデバイス"))
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(Color(white: 0.8))
             Spacer(minLength: 4)
-            Label("往下拖动选择", systemImage: "chevron.down")
+            Label(tr("往下拖动选择", "Drag down to choose", "下にドラッグして選択"), systemImage: "chevron.down")
                 .font(.system(size: 11))
                 .foregroundStyle(Palette.secondary)
                 .labelStyle(TrailingIconLabelStyle())
@@ -286,6 +294,11 @@ private struct TrailingIconLabelStyle: LabelStyle {
     }
 }
 
+/// "松手发送到 书房台式机".
+private func releaseToSend(to name: String) -> String {
+    tr("松手发送到 \(name)", "Release to send to \(name)", "離すと \(name) に送信")
+}
+
 private struct SingleTargetContent: View {
     let device: Device
     let label: String
@@ -294,7 +307,7 @@ private struct SingleTargetContent: View {
         HStack(spacing: 14) {
             Avatar(device: device, size: 50, highlighted: true)
             VStack(alignment: .leading, spacing: 4) {
-                Text("松手发送到 \(device.name)")
+                Text(releaseToSend(to: device.name))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Palette.text)
                 Text(label)
@@ -317,7 +330,7 @@ private struct PickerContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("把 \(label) 发送到")
+            Text(tr("把 \(label) 发送到", "Send \(label) to", "\(label) の送信先"))
                 .font(.system(size: 11))
                 .foregroundStyle(Palette.secondary)
                 .lineLimit(1)
@@ -358,8 +371,10 @@ private struct DeviceTile: View {
 
     private var status: String {
         if device.isLocalSend { return "LocalSend" }
-        let state = device.needsRepair ? "需重新配对" : (device.online ? "在线" : "离线")
-        return device.isDefault ? "\(state) · 默认" : state
+        let state = device.needsRepair
+            ? tr("需重新配对", "Needs re-pairing", "再ペアリングが必要")
+            : (device.online ? tr("在线", "Online", "オンライン") : tr("离线", "Offline", "オフライン"))
+        return device.isDefault ? "\(state) · \(tr("默认", "Default", "デフォルト"))" : state
     }
 }
 
@@ -378,6 +393,10 @@ private struct StatusLine: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Palette.text)
                 .lineLimit(1)
+                // Shrinks a little before it truncates, and keeps its room
+                // ahead of the trailing detail.
+                .minimumScaleFactor(0.85)
+                .layoutPriority(1)
             Spacer(minLength: 8)
             if let trailing {
                 Text(trailing)
@@ -434,10 +453,12 @@ private struct QueuedContent: View {
                 .font(.system(size: 17))
                 .foregroundStyle(Palette.warning)
             VStack(alignment: .leading, spacing: 2) {
-                Text("排队中 · 前面还有 \(position) 个")
+                Text(tr("排队中 · 前面还有 \(position) 个", "Queued · \(position) ahead", "順番待ち · あと \(position) 件"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Palette.text)
-                Text("对方正在接收其他设备的文件，轮到后自动发送")
+                Text(tr(
+                    "对方正在接收其他设备的文件，轮到后自动发送", "Sends once it's done receiving",
+                    "相手の受信が終わると自動で送信します"))
                     .font(.system(size: 11))
                     .foregroundStyle(Palette.secondary)
                     .lineLimit(1)
@@ -460,11 +481,11 @@ private struct AwaitingContent: View {
                 .font(.system(size: 17))
                 .foregroundStyle(Palette.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("等待 \(name) 接收…")
+                Text(tr("等待 \(name) 接收…", "Waiting for \(name) to accept…", "\(name) の受信を待っています…"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Palette.text)
                     .lineLimit(1)
-                Text("对方用 LocalSend，接收后开始发送")
+                Text(tr("对方用 LocalSend，接收后开始发送", "Starts once they accept in LocalSend", "相手が LocalSend で受信すると送信を開始します"))
                     .font(.system(size: 11))
                     .foregroundStyle(Palette.secondary)
                     .lineLimit(1)
@@ -486,7 +507,7 @@ private struct CompactQueued: View {
                 .foregroundStyle(Palette.warning)
             Spacer()
             if !notch.isNotch {
-                Text("排队中")
+                Text(tr("排队中", "Queued", "順番待ち"))
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(Palette.text)
                 Spacer()
@@ -510,11 +531,11 @@ private struct PairRequestContent: View {
         VStack(spacing: 10) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(alias) 请求配对")
+                    Text(tr("\(alias) 请求配对", "\(alias) wants to pair", "\(alias) がペアリングを求めています"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Palette.text)
                         .lineLimit(1)
-                    Text("两边显示的数字一致才配对")
+                    Text(tr("两边显示的数字一致才配对", "Pair only if both show the same number", "両方の数字が同じならペアリング"))
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.secondary)
                 }
@@ -525,9 +546,9 @@ private struct PairRequestContent: View {
             }
             HStack(spacing: 8) {
                 Spacer()
-                Button("拒绝", action: onDecline)
+                Button(tr("拒绝", "Decline", "拒否"), action: onDecline)
                     .buttonStyle(PillButtonStyle())
-                Button("配对", action: onAccept)
+                Button(tr("配对", "Pair", "ペアリング"), action: onAccept)
                     .buttonStyle(PillButtonStyle(fill: Palette.accent))
             }
         }
@@ -545,7 +566,7 @@ private struct ReceiveRequestContent: View {
             HStack(alignment: .top, spacing: 10) {
                 Avatar(device: request.device, size: 30)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(request.text == nil ? "\(request.device.name) 想发送" : "\(request.device.name) 发来一段文字")
+                    Text(title)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Palette.text)
                         .lineLimit(1)
@@ -578,13 +599,24 @@ private struct ReceiveRequestContent: View {
                 Spacer()
                 // Counts down to the automatic decline.
                 TimelineView(.periodic(from: .now, by: 0.25)) { context in
-                    Button("\(request.text == nil ? "拒绝" : "忽略") \(remaining(at: context.date))", action: onDecline)
+                    Button("\(declineTitle) \(remaining(at: context.date))", action: onDecline)
                         .buttonStyle(PillButtonStyle())
                 }
-                Button(request.text == nil ? "接收" : "复制", action: onAccept)
+                Button(request.text == nil ? tr("接收", "Accept", "受信") : tr("复制", "Copy", "コピー"), action: onAccept)
                     .buttonStyle(PillButtonStyle(fill: Palette.accent))
             }
         }
+    }
+
+    private var title: String {
+        let name = request.device.name
+        return request.text == nil
+            ? tr("\(name) 想发送", "\(name) wants to send", "\(name) から受信リクエスト")
+            : tr("\(name) 发来一段文字", "\(name) sent a text message", "\(name) からテキストメッセージ")
+    }
+
+    private var declineTitle: String {
+        request.text == nil ? tr("拒绝", "Decline", "拒否") : tr("忽略", "Ignore", "無視")
     }
 
     /// "42s", until the automatic decline.
@@ -604,12 +636,14 @@ private struct FailedContent: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 16))
                 .foregroundStyle(Palette.warning)
-            Text("发送失败：\(reason)")
+            Text(IslandModel.failedText(reason))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Palette.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             Spacer()
             if canRetry {
-                Button("重试", action: onRetry)
+                Button(tr("重试", "Retry", "再試行"), action: onRetry)
                     .buttonStyle(PillButtonStyle())
             }
         }
@@ -621,8 +655,14 @@ private struct ReceivingContent: View {
     /// Other paired devices waiting to send.
     let waiting: Int
 
+    private var waitingText: String {
+        tr("还有 \(waiting) 个设备等待发送", "\(plural(waiting, "more device", "more devices")) waiting to send", "ほかに \(waiting) 台が送信待ち")
+    }
+
     private var subtitle: String {
-        transfer.device.isLocalSend ? "LocalSend · 已同意接收" : "已配对 · 自动保存"
+        transfer.device.isLocalSend
+            ? tr("LocalSend · 已同意接收", "LocalSend · accepted", "LocalSend · 受信を許可")
+            : tr("已配对 · 自动保存", "Paired · saved automatically", "ペアリング済み · 自動保存")
     }
 
     var body: some View {
@@ -630,10 +670,13 @@ private struct ReceivingContent: View {
             HStack(spacing: 10) {
                 Avatar(device: transfer.device, size: 30)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(transfer.device.name) 发来 \(transfer.fileCount) 个文件")
+                    Text(tr(
+                        "\(transfer.device.name) 发来 \(transfer.fileCount) 个文件",
+                        "\(plural(transfer.fileCount, "file", "files")) from \(transfer.device.name)",
+                        "\(transfer.device.name) から \(transfer.fileCount) 個のファイル"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Palette.text)
-                    Text(waiting > 0 ? "还有 \(waiting) 个设备等待发送" : subtitle)
+                    Text(waiting > 0 ? waitingText : subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.secondary)
                 }
@@ -654,12 +697,14 @@ private struct ReceivedContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("已收到 \(transfer.fileCount) 个文件", systemImage: "checkmark.circle.fill")
+                Label(
+                    tr("已收到 \(transfer.fileCount) 个文件", "Received \(plural(transfer.fileCount, "file", "files"))", "\(transfer.fileCount) 個のファイルを受信しました"),
+                    systemImage: "checkmark.circle.fill")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Palette.text)
                     .labelStyle(TintedIconLabelStyle(color: Palette.success))
                 Spacer()
-                Button("在访达中显示", action: onReveal)
+                Button(tr("在访达中显示", "Show in Finder", "Finder で表示"), action: onReveal)
                     .buttonStyle(LinkButtonStyle())
             }
             HStack(spacing: 6) {
@@ -667,7 +712,7 @@ private struct ReceivedContent: View {
                     FileChip(url: url)
                 }
                 if transfer.files.count > 3 {
-                    Text("等 \(transfer.files.count) 个")
+                    Text(tr("等 \(transfer.files.count) 个", "and \(transfer.files.count - 3) more", "など \(transfer.files.count) 個"))
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.secondary)
                 }
@@ -724,7 +769,7 @@ private struct CancelButton: View {
                 .foregroundStyle(Palette.tertiary)
         }
         .buttonStyle(.plain)
-        .help("取消")
+        .help(tr("取消", "Cancel", "キャンセル"))
     }
 }
 

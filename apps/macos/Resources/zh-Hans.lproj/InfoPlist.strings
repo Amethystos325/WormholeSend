@@ -1,0 +1,2 @@
+/* 本地网络权限弹窗（macOS 15 起）。 */
+"NSLocalNetworkUsageDescription" = "用来发现局域网里配对过的电脑，并直接把文件传给它们，不经过任何服务器。";

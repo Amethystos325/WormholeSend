@@ -24,9 +24,8 @@ final class IslandModel {
         /// Without 重试 when the other side's user declined: retrying
         /// would only ask them again.
         case failed(String, canRetry: Bool)
-        /// Released over a device that can't take files now; `reason` is
-        /// "离线" or "需要重新配对".
-        case refused(name: String, reason: String)
+        /// Released over a device that can't take files now: "iPad 离线，未发送".
+        case refused(String)
         case receiving
         case received
         /// An incoming transfer stopped: "对方取消了发送" or "连接中断".
@@ -195,9 +194,9 @@ final class IslandModel {
 
     private func enterIsland() {
         if devices.isEmpty {
-            phase = .unavailable("还没有配对设备 · 点击配对")
+            phase = .unavailable(tr("还没有配对设备 · 点击配对", "No paired devices · Click to pair", "ペアリングしたデバイスがありません · クリックしてペアリング"))
         } else if usableDevices.isEmpty {
-            phase = .unavailable(devices.count == 1 ? "\(devices[0].name) \(devices[0].unusableReason)，无法发送" : "没有在线的设备")
+            phase = .unavailable(devices.count == 1 ? devices[0].cannotSend : tr("没有在线的设备", "No devices online", "オンラインのデバイスがありません"))
         } else if devices.count == 1 {
             phase = .picker(hot: 0)
         } else if defaultDevice?.usable == true {
@@ -216,14 +215,22 @@ final class IslandModel {
     // MARK: - Hint text
 
     var hintText: String {
-        if devices.isEmpty { return "还没有配对设备" }
+        if devices.isEmpty { return tr("还没有配对设备", "No paired devices yet", "ペアリングしたデバイスがありません") }
         if devices.count == 1 {
             let device = devices[0]
-            return device.usable ? "移到这里发送到 \(device.name)" : "\(device.name) \(device.unusableReason)，无法发送"
+            return device.usable ? Self.moveHere(toSendTo: device.name) : device.cannotSend
         }
-        if let device = defaultDevice, device.usable { return "移到这里发送到 \(device.name)" }
-        guard let device = defaultDevice else { return "移到这里选择设备" }
-        return "默认设备\(device.unusableReason)，移到这里选其他设备"
+        if let device = defaultDevice, device.usable { return Self.moveHere(toSendTo: device.name) }
+        guard let device = defaultDevice else {
+            return tr("移到这里选择设备", "Move here to choose a device", "ここに移動してデバイスを選択")
+        }
+        return device.needsRepair
+            ? tr("默认设备需要重新配对，移到这里选其他设备", "Default device needs re-pairing. Move here to choose another", "デフォルトのデバイスは再ペアリングが必要です。ここに移動して別のデバイスを選択")
+            : tr("默认设备离线，移到这里选其他设备", "Default device offline. Move here to choose another", "デフォルトのデバイスはオフラインです。ここに移動して別のデバイスを選択")
+    }
+
+    private static func moveHere(toSendTo name: String) -> String {
+        tr("移到这里发送到 \(name)", "Move here to send to \(name)", "ここに移動して \(name) に送信")
     }
 
     // MARK: - Transfers (through the core)
@@ -244,7 +251,7 @@ final class IslandModel {
         // Until the core reports the queue, the session or the wait.
         phase = device.isLocalSend ? .awaiting : .sending
         guard let core else {
-            fail("核心没有运行")
+            fail(tr("核心没有运行", "The core isn't running", "コアが起動していません"))
             return
         }
         switch core.call("send", ["deviceId": device.id, "paths": files.map(\.path)], as: String.self) {
@@ -255,7 +262,7 @@ final class IslandModel {
 
     private func refuse(_ device: Device) {
         cancelTimers()
-        phase = .refused(name: device.name, reason: device.unusableReason)
+        phase = .refused(device.notSent)
         schedule(after: Spec.refusedHold) { [weak self] in self?.settle() }
     }
 
@@ -295,7 +302,7 @@ final class IslandModel {
         case "device.updated":
             reloadDevices()
         case "pair.incoming":
-            if let id = event.pairId { incomingPairs[id] = event.alias ?? "对方" }
+            if let id = event.pairId { incomingPairs[id] = event.alias ?? Self.otherDevice }
         case "pair.code":
             if let id = event.pairId, let alias = incomingPairs[id], let code = event.code {
                 ask(.pairRequest(pairId: id, alias: alias, code: code))
@@ -309,7 +316,8 @@ final class IslandModel {
             pairFinished(event)
         case "device.unpaired":
             reloadDevices()
-            showNotice("\(event.alias ?? "对方") 已解除配对", success: false)
+            let alias = event.alias ?? Self.otherDevice
+            showNotice(tr("\(alias) 已解除配对", "\(alias) unpaired this device", "\(alias) がペアリングを解除しました"), success: false)
         case "receive.waiting":
             waitingCount = event.count ?? 0
         case "transfer.queued" where isCurrentSend(event):
@@ -361,16 +369,16 @@ final class IslandModel {
         case "cancelled":
             settle()
         default:
-            fail(event.error ?? "发送失败", canRetry: event.status != "declined")
+            fail(event.error ?? tr("未知错误", "Unknown error", "不明なエラー"), canRetry: event.status != "declined")
         }
     }
 
     private func receiveStarted(_ event: CoreEvent) {
         let id = event.deviceId ?? ""
         let device = devices.first { $0.id == id } ?? requestSenders[id]
-            ?? Device(id: id, name: event.alias ?? "未知设备", symbol: "desktopcomputer", online: true, isDefault: false)
+            ?? Device(id: id, name: event.alias ?? Self.unknownDevice, symbol: "desktopcomputer", online: true, isDefault: false)
         let count = event.files ?? 0
-        incoming = Transfer(id: event.id, device: device, files: [], label: "\(count) 个文件", count: count)
+        incoming = Transfer(id: event.id, device: device, files: [], label: FileLabel.count(count), count: count)
         if canShowIncoming {
             cancelTimers()
             transfer = incoming
@@ -396,7 +404,10 @@ final class IslandModel {
             cancelTimers()
             // A cancel was the sender's choice; only a broken connection sounds.
             if event.status != "cancelled" { Sound.failed.play() }
-            phase = .interrupted(event.status == "cancelled" ? "对方取消了发送" : "连接中断")
+            phase = .interrupted(
+                event.status == "cancelled"
+                    ? tr("对方取消了发送", "The sender cancelled", "送信者がキャンセルしました")
+                    : tr("连接中断", "The connection dropped", "接続が切れました"))
             schedule(after: Spec.failedHold) { [weak self] in self?.settle() }
         }
     }
@@ -431,6 +442,18 @@ final class IslandModel {
 
     // MARK: - Requests on the island
 
+    /// For a device the core did not name.
+    private static var otherDevice: String { tr("对方", "The other device", "相手") }
+    private static var unknownDevice: String { tr("未知设备", "Unknown device", "不明なデバイス") }
+
+    private static func paired(with alias: String) -> String {
+        tr("已与 \(alias) 配对", "Paired with \(alias)", "\(alias) とペアリングしました")
+    }
+
+    private static func pairingFailed(_ reason: String) -> String {
+        tr("配对失败：\(reason)", "Pairing failed: \(reason)", "ペアリングできませんでした：\(reason)")
+    }
+
     /// Queues a request that needs an answer and shows it if the island is free.
     private func ask(_ request: Phase) {
         pendingRequests.append(request)
@@ -448,7 +471,7 @@ final class IslandModel {
         drop { $0 == phase }
         switch core?.call("pair.confirm", ["pairId": pairId, "accept": true]) {
         case .failure(let failure):
-            showNotice("配对失败：\(failure.message)", success: false)
+            showNotice(Self.pairingFailed(failure.message), success: false)
         default:
             waitingPair = pairId
             phase = .pairWaiting(alias: alias)
@@ -465,7 +488,7 @@ final class IslandModel {
 
     private func pairFinished(_ event: CoreEvent) {
         guard let pairId = event.pairId else { return }
-        let alias = event.alias ?? incomingPairs[pairId] ?? "对方"
+        let alias = event.alias ?? incomingPairs[pairId] ?? Self.otherDevice
         incomingPairs[pairId] = nil
         let ok = event.ok == true
         drop {
@@ -474,10 +497,11 @@ final class IslandModel {
         switch phase {
         case .pairRequest(let id, _, _) where id == pairId:
             // Declined by the other side or expired while still on screen.
-            if ok { showNotice("已与 \(alias) 配对", success: true) } else { settle() }
+            if ok { showNotice(Self.paired(with: alias), success: true) } else { settle() }
         case .pairWaiting where waitingPair == pairId:
             waitingPair = nil
-            showNotice(ok ? "已与 \(alias) 配对" : "配对失败：\(event.reason ?? "未知原因")", success: ok)
+            let reason = event.reason ?? tr("未知原因", "Unknown reason", "原因不明")
+            showNotice(ok ? Self.paired(with: alias) : Self.pairingFailed(reason), success: ok)
         default:
             break
         }
@@ -487,11 +511,11 @@ final class IslandModel {
         guard let id = event.requestId, let deviceId = event.deviceId else { return }
         let device = devices.first { $0.id == deviceId }
             ?? Device(
-                id: deviceId, name: event.alias ?? "未知设备", symbol: Device.symbol(for: event.deviceType),
+                id: deviceId, name: event.alias ?? Self.unknownDevice, symbol: Device.symbol(for: event.deviceType),
                 online: true, isDefault: false, isLocalSend: true)
         requestSenders[deviceId] = device
         let request = ReceiveRequest(
-            id: id, device: device, label: event.label ?? "\(event.files ?? 0) 个文件",
+            id: id, device: device, label: event.label ?? FileLabel.count(event.files ?? 0),
             total: event.total ?? 0, text: event.text, deadline: .now + ReceiveRequest.timeout)
         ask(.receiveRequest(request))
     }
@@ -507,7 +531,8 @@ final class IslandModel {
         if event.reason == "timeout" {
             settle()
         } else {
-            showNotice("\(request.device.name) 取消了发送", success: false)
+            let name = request.device.name
+            showNotice(tr("\(name) 取消了发送", "\(name) cancelled sending", "\(name) が送信をキャンセルしました"), success: false)
         }
     }
 
@@ -521,16 +546,22 @@ final class IslandModel {
             // Copied even when the sender gave up meanwhile: the text is here.
             NSPasteboard.general.clearContents()
             guard NSPasteboard.general.setString(text, forType: .string) else {
-                showNotice("无法写入剪贴板", success: false)
+                showNotice(tr("无法写入剪贴板", "Couldn't copy to the clipboard", "クリップボードにコピーできませんでした"), success: false)
                 return
             }
             let preview = request.preview ?? text
-            showNotice("已复制到剪贴板", detail: preview.count > 11 ? "\(preview.prefix(11))…" : preview, success: true)
+            // The start of the text: 11 characters, as on Windows; English
+            // words need more.
+            let length = Language.current == .en ? 24 : 11
+            showNotice(
+                tr("已复制到剪贴板", "Copied", "コピーしました"),
+                detail: preview.count > length ? "\(preview.prefix(length))…" : preview, success: true)
         } else if open {
             // The transfer's own events follow.
             settle()
         } else {
-            showNotice("\(request.device.name) 已取消发送", success: false)
+            let name = request.device.name
+            showNotice(tr("\(name) 已取消发送", "\(name) already cancelled sending", "\(name) は送信をキャンセルしました"), success: false)
         }
     }
 
@@ -609,18 +640,25 @@ final class IslandModel {
         case .idle:
             if case .notch(let width, let height) = mode { return CGSize(width: width, height: height) }
             return CGSize(width: 160, height: 30)
-        case .hint: content = CGSize(width: 260, height: 22)
+        // One line widens to fit its text (another language, a long name).
+        case .hint: content = CGSize(width: fitting(hintText, size: 12.5, base: 260, extra: 59), height: 22)
         // The default device row, then the strip (`Spec.moreStripHeight`
         // including the bottom padding) along the bottom edge.
         case .target: content = CGSize(width: 360, height: 92)
         case .picker: content = devices.count == 1 ? CGSize(width: 380, height: 64) : CGSize(width: pickerWidth, height: 122)
-        case .unavailable: content = CGSize(width: 300, height: 24)
+        case .unavailable(let text): content = CGSize(width: fitting(text, size: 13, base: 300, extra: 62), height: 24)
         case .queued where queueCollapsed:
             if case .notch(let width, let height) = mode { return CGSize(width: width + 76, height: height) }
             return CGSize(width: 150, height: 30)
         case .sending: content = CGSize(width: 340, height: 56)
         case .queued, .awaiting: content = CGSize(width: 340, height: 40)
-        case .done, .failed, .refused, .interrupted, .pairWaiting, .notice: content = CGSize(width: 340, height: 28)
+        case .refused(let text): content = CGSize(width: fitting(text, size: 13, base: 340, extra: 70), height: 28)
+        case .failed(let reason, let canRetry):
+            content = CGSize(width: fitting(Self.failedText(reason), size: 13, base: 340, extra: canRetry ? 140 : 70), height: 28)
+        case .notice(let text, let detail, _):
+            let detailWidth = detail.map { Self.textWidth($0, size: 11, weight: .regular) + 8 } ?? 0
+            content = CGSize(width: fitting(text, size: 13, base: 340, extra: 70 + detailWidth), height: 28)
+        case .done, .interrupted, .pairWaiting: content = CGSize(width: 340, height: 28)
         case .pairRequest: content = CGSize(width: 380, height: 78)
         case .receiveRequest(let request): content = CGSize(width: 380, height: request.previewWraps ? 92 : 78)
         case .receiving: content = CGSize(width: 384, height: 60)
@@ -632,6 +670,22 @@ final class IslandModel {
         case .capsule:
             return CGSize(width: content.width, height: content.height + 24)
         }
+    }
+
+    /// "发送失败：网络中断".
+    static func failedText(_ reason: String) -> String {
+        tr("发送失败：\(reason)", "Couldn't send: \(reason)", "送信失敗：\(reason)")
+    }
+
+    /// Wide enough for a line of text: at least `base`, at most the
+    /// picker's width. `extra` is the rest of the line (padding, icon,
+    /// buttons).
+    private func fitting(_ text: String, size: CGFloat, base: CGFloat, extra: CGFloat) -> CGFloat {
+        min(Spec.pickerMaxWidth, max(base, Self.textWidth(text, size: size) + extra))
+    }
+
+    private static func textWidth(_ text: String, size: CGFloat, weight: NSFont.Weight = .medium) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight)]).width)
     }
 
     /// Wider from five devices on, so each keeps a usable column (as on

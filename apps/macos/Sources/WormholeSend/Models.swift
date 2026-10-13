@@ -38,7 +38,19 @@ struct Device: Identifiable, Equatable {
     /// unavailable, like on Windows.
     var usable: Bool { online && !needsRepair }
 
-    var unusableReason: String { needsRepair ? "需要重新配对" : "离线" }
+    /// "书房台式机 离线，无法发送".
+    var cannotSend: String {
+        needsRepair
+            ? tr("\(name) 需要重新配对，无法发送", "\(name) needs re-pairing, can't send", "\(name) は再ペアリングが必要なため送信できません")
+            : tr("\(name) 离线，无法发送", "\(name) is offline, can't send", "\(name) はオフラインのため送信できません")
+    }
+
+    /// Released over it while it can't take files: "iPad 离线，未发送".
+    var notSent: String {
+        needsRepair
+            ? tr("\(name) 需要重新配对，未发送", "\(name) needs re-pairing, not sent", "\(name) は再ペアリングが必要なため送信しませんでした")
+            : tr("\(name) 离线，未发送", "\(name) is offline, not sent", "\(name) はオフラインのため送信しませんでした")
+    }
 
     static func symbol(for deviceType: String?) -> String {
         switch deviceType {
@@ -149,7 +161,8 @@ struct TransferStats: Equatable {
     /// "1.2 GB / 2.1 GB · 45.3 MB/s" for one file, "3 / 12 个文件 · 45.3 MB/s"
     /// for several or a folder.
     var line: String {
-        var parts = [files > 1 ? "\(filesDone) / \(files) 个文件" : "\(Self.size(bytes)) / \(Self.size(total))"]
+        let count = tr("\(filesDone) / \(files) 个文件", "\(filesDone) / \(files) files", "\(filesDone) / \(files) ファイル")
+        var parts = [files > 1 ? count : "\(Self.size(bytes)) / \(Self.size(total))"]
         if let speed { parts.append("\(Self.size(Int64(speed)))/s") }
         return parts.joined(separator: " · ")
     }
@@ -161,21 +174,32 @@ struct TransferStats: Equatable {
 
 /// What a drag carries, named after its first item: "季度报告.pdf",
 /// "文件夹 设计稿", "季度报告.pdf 等 3 个文件", "设计稿 等 2 个文件夹",
-/// "季度报告.pdf 等 4 个文件或文件夹".
+/// "季度报告.pdf 等 4 个文件或文件夹". The same rules as the core's labels
+/// and the Windows app, in English ("a.pdf and 2 more files") and Japanese
+/// ("a.pdf など 3 個のファイル") too.
 enum FileLabel {
     static func of(_ urls: [URL]) -> String {
-        guard let first = urls.first else { return "文件" }
+        guard let first = urls.first else { return tr("文件", "Files", "ファイル") }
         let name = first.lastPathComponent
         let folders = urls.filter(isFolder).count
         if urls.count == 1 {
-            return folders == 1 ? "文件夹 \(name)" : name
+            return folders == 1 ? tr("文件夹 \(name)", "\(name) (folder)", "フォルダ「\(name)」") : name
         }
-        let kind = switch folders {
-        case 0: "文件"
-        case urls.count: "文件夹"
-        default: "文件或文件夹"
+        let count = urls.count
+        let more = count - 1
+        return switch folders {
+        case 0:
+            tr("\(name) 等 \(count) 个文件", "\(name) and \(plural(more, "more file", "more files"))", "\(name) など \(count) 個のファイル")
+        case count:
+            tr("\(name) 等 \(count) 个文件夹", "\(name) and \(plural(more, "more folder", "more folders"))", "\(name) など \(count) 個のフォルダ")
+        default:
+            tr("\(name) 等 \(count) 个文件或文件夹", "\(name) and \(plural(more, "more item", "more items"))", "\(name) など \(count) 個の項目")
         }
-        return "\(name) 等 \(urls.count) 个\(kind)"
+    }
+
+    /// "3 个文件", while the names are not known yet.
+    static func count(_ count: Int) -> String {
+        tr("\(count) 个文件", plural(count, "file", "files"), "\(count) 個のファイル")
     }
 
     /// Packages such as apps are folders on disk but files to the user.

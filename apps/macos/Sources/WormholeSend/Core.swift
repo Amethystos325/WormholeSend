@@ -39,7 +39,7 @@ final class Core: @unchecked Sendable {
                     continuation.resume(throwing: failure)
                 default:
                     Unmanaged<EventSink>.fromOpaque(context).release()
-                    continuation.resume(throwing: Failure(message: "核心没有启动"))
+                    continuation.resume(throwing: Failure(message: tr("核心没有启动", "The core isn't running", "コアが起動していません")))
                 }
             }
         }
@@ -57,18 +57,18 @@ final class Core: @unchecked Sendable {
         var command = arguments
         command["command"] = name
         guard let data = try? JSONSerialization.data(withJSONObject: command) else {
-            return .failure(Failure(message: "命令无法编码"))
+            return .failure(Failure(message: tr("命令无法编码", "Couldn't encode the command", "コマンドをエンコードできませんでした")))
         }
         let response = String(decoding: data, as: UTF8.self).withCString { wh_command(handle, $0) }
         return Core.parse(response, as: type)
     }
 
     private static func parse<T: Decodable>(_ response: UnsafeMutablePointer<CChar>?, as type: T.Type) -> Result<T, Failure> {
-        guard let response else { return .failure(Failure(message: "核心没有返回结果")) }
+        guard let response else { return .failure(Failure(message: tr("核心没有返回结果", "The core returned nothing", "コアから結果が返りませんでした"))) }
         defer { wh_free_string(response) }
         let data = Data(String(cString: response).utf8)
         guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data) else {
-            return .failure(Failure(message: "核心返回了无法识别的结果"))
+            return .failure(Failure(message: tr("核心返回了无法识别的结果", "The core returned something unrecognized", "コアから認識できない結果が返りました")))
         }
         if envelope.ok, let result = envelope.result {
             return .success(result)
@@ -76,7 +76,7 @@ final class Core: @unchecked Sendable {
         if envelope.ok, let empty = Nothing() as? T {
             return .success(empty)
         }
-        return .failure(Failure(message: envelope.error ?? "未知错误"))
+        return .failure(Failure(message: envelope.error ?? tr("未知错误", "Unknown error", "不明なエラー")))
     }
 }
 

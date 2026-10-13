@@ -40,7 +40,7 @@ enum Demo {
             case "single":
                 model.devices = [Device.samples[0]]
                 model.phase = .picker(hot: 0)
-            case "unavailable": model.phase = .unavailable("没有在线的设备")
+            case "unavailable": model.phase = .unavailable(tr("没有在线的设备", "No devices online", "オンラインのデバイスがありません"))
             case "sending":
                 model.transfer = sample
                 model.transfer?.progress = 0.45
@@ -65,28 +65,43 @@ enum Demo {
                 model.phase = .done
             case "failed":
                 model.transfer = sample
-                model.phase = .failed("网络中断", canRetry: true)
+                model.phase = .failed(tr("网络中断", "The network dropped", "ネットワークが切断されました"), canRetry: true)
             case "declined":
                 model.transfer = Transfer(device: Device.localSendSample, files: files, label: "季度报告.pdf")
-                model.phase = .failed("Pixel 8 拒绝了接收", canRetry: false)
-            case "refused": model.phase = .refused(name: "iPad", reason: "离线")
-            case "refused-repair": model.phase = .refused(name: "MacBook Air", reason: "需要重新配对")
+                model.phase = .failed(tr("Pixel 8 拒绝了接收", "Pixel 8 declined", "Pixel 8 が受信を拒否しました"), canRetry: false)
+            case "refused": model.phase = .refused(Device.samples[2].notSent)
+            case "refused-repair":
+                var device = Device.samples[1]
+                device.needsRepair = true
+                model.phase = .refused(device.notSent)
             case "pair-request": model.phase = .pairRequest(pairId: "demo", alias: "书房台式机", code: "482019")
             case "pair-waiting": model.phase = .pairWaiting(alias: "书房台式机")
             case "receive-request":
                 let request = ReceiveRequest(
-                    id: "demo", device: Device.localSendSample, label: "IMG_2041.heic 等 3 个文件",
+                    id: "demo", device: Device.localSendSample,
+                    label: tr("IMG_2041.heic 等 3 个文件", "IMG_2041.heic and 2 more files", "IMG_2041.heic など 3 個のファイル"),
                     total: 8_400_000, text: nil, deadline: .now + 42)
                 model.phase = .receiveRequest(request)
             case "receive-text":
                 let request = ReceiveRequest(
-                    id: "demo", device: Device.localSendSample, label: "一段文字", total: 64,
-                    text: "明天下午三点在 3 楼会议室，记得带上季度报告的打印版，还有上次讨论的预算表。",
+                    id: "demo", device: Device.localSendSample, label: "", total: 64,
+                    text: tr(
+                        "明天下午三点在 3 楼会议室，记得带上季度报告的打印版，还有上次讨论的预算表。",
+                        "Meeting tomorrow at 3 pm in room 3F. Please bring a printed copy of the quarterly report and the budget sheet.",
+                        "明日の午後3時、3階の会議室で。四半期報告書の印刷版と、前回話した予算表を持ってきてください。"),
                     deadline: .now + 7)
                 model.phase = .receiveRequest(request)
-            case "notice-copied": model.phase = .notice(text: "已复制到剪贴板", detail: "明天下午三点在 3 楼…", success: true)
-            case "notice": model.phase = .notice(text: "已与 书房台式机 配对", detail: nil, success: true)
-            case "notice-failed": model.phase = .notice(text: "配对失败：对方拒绝了配对", detail: nil, success: false)
+            case "notice-copied":
+                model.phase = .notice(
+                    text: tr("已复制到剪贴板", "Copied", "コピーしました"),
+                    detail: tr("明天下午三点在 3 楼…", "Meeting tomorrow at 3 pm…", "明日の午後3時、3階の…"), success: true)
+            case "notice":
+                model.phase = .notice(
+                    text: tr("已与 书房台式机 配对", "Paired with 书房台式机", "书房台式机 とペアリングしました"), detail: nil, success: true)
+            case "notice-failed":
+                model.phase = .notice(
+                    text: tr("配对失败：对方拒绝了配对", "Pairing failed: they declined", "ペアリングできませんでした：相手が拒否しました"),
+                    detail: nil, success: false)
             case "receiving":
                 let received = DemoFiles.make()
                 model.transfer = Transfer(device: Device.samples[1], files: received, label: FileLabel.of(received), progress: 0.62)
@@ -97,7 +112,7 @@ enum Demo {
                 model.transfer = Transfer(
                     device: Device.localSendSample, files: received, label: FileLabel.of(received), progress: 0.4)
                 model.phase = .receiving
-            case "interrupted": model.phase = .interrupted("对方取消了发送")
+            case "interrupted": model.phase = .interrupted(tr("对方取消了发送", "The sender cancelled", "送信者がキャンセルしました"))
             case "received":
                 let received = DemoFiles.make()
                 model.transfer = Transfer(device: Device.samples[1], files: received, label: FileLabel.of(received), progress: 1)
