@@ -2,6 +2,8 @@
 
 The notch panel on top of the Rust core: SwiftUI + AppKit, macOS 14+. The core is linked as a static library through core-ffi (`libwormhole.a`, header `core-ffi/include/wormhole.h`). Sending, receiving, the queue, interruptions and pairing all run through the real core. Pairing you start from the menu bar confirms the 6-digit code in a dialog; requests from other devices show on the island.
 
+LocalSend devices (1.18+) can't pair, but files go both ways, confirmed by the receiver every time. When one sends here, the island asks: 拒绝 / 接收, or for a text message 忽略 / 复制 (copied to the clipboard). No answer within a minute declines it; the 拒绝 / 忽略 button counts down. LocalSend devices that are online appear in the picker after the paired ones, marked "LocalSend"; sending to one waits ("等待 … 接收…") until its user accepts. They never show under "配对新设备", and the default device is always a paired one.
+
 ## Running it
 
 ```bash
@@ -27,7 +29,7 @@ The first launch shows a welcome that explains the Local Network prompt macOS 15
 "build/Wormhole Send.app/Contents/MacOS/WormholeSend" --demo picker [--screen external] [--log]
 ```
 
-States: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `interrupted`. `--log` prints every state change to stderr.
+States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `unavailable` `sending` `awaiting` `queued` `queued-compact` `done` `failed` `declined` `refused` `receiving` `receiving-localsend` `received` `interrupted` `refused-repair` `pair-request` `pair-waiting` `receive-request` `receive-text` `notice` `notice-copied` `notice-failed`. `--log` prints every state change to stderr.
 
 ## Manual checklist
 
@@ -51,6 +53,11 @@ States: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sendin
 - [ ] Menu bar → "提示音" off: no sounds; on again: a sample plays
 - [ ] First launch: the welcome comes before the system's Local Network prompt; after "允许" the menu shows no warning
 - [ ] Turn Wormhole Send off in System Settings › Privacy & Security › Local Network and restart the app: the icon gets an amber dot, the menu says "没有本地网络权限" and "打开“本地网络”设置…" opens that page; turning it back on clears the warning the next time the menu opens
+- [ ] LocalSend on a phone sends photos to this Mac: the island asks "… 想发送 IMG_… 等 N 个文件 · 大小" (pair-request.wav plays); 接收 shows the progress, then the files; 拒绝 tells the phone it was declined
+- [ ] LocalSend sends a text: "… 发来一段文字" with the text; 复制 puts it on the clipboard and shows "已复制到剪贴板" with the start of the text; 忽略 closes it
+- [ ] 拒绝 / 忽略 count down from 60 s ("拒绝 42s"); at 0 the island closes and the phone is told it was declined. The phone cancels while the island asks: "… 取消了发送"
+- [ ] With LocalSend open on the phone, drag a file and go into the device list: the phone appears, marked "LocalSend"; release on it: "等待 … 接收…", then sending once accepted on the phone; declined on the phone: "发送失败：… 拒绝了接收", without 重试; the × cancels the wait
+- [ ] "配对新设备" never lists LocalSend devices
 - [ ] Drag on the external monitor: a floating capsule appears at the top of that screen
 - [ ] While the island is showing, click menu bar items next to the notch: they still work (clicks pass through the transparent area)
 - [ ] Switch to a full-screen app and drag: the island still appears

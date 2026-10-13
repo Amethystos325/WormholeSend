@@ -18,6 +18,10 @@ enum Spec {
     /// 15+, so nothing may require lingering up there.
     static let moreStripHeight: CGFloat = 40
     static let pickerWidth: CGFloat = 420
+    /// The picker widens with the devices, up to this; LocalSend devices
+    /// beyond `pickerMaxDevices` are left out.
+    static let pickerMaxWidth: CGFloat = 528
+    static let pickerMaxDevices = 6
     /// Distance from the screen top of the floating capsule on screens
     /// without a notch.
     static let capsuleTop: CGFloat = 8

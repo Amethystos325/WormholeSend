@@ -90,6 +90,7 @@ struct IslandView: View {
         case .picker: "picker"
         case .unavailable: "unavailable"
         case .sending: "sending"
+        case .awaiting: "awaiting"
         case .queued: compactQueued ? "queued-compact" : "queued"
         case .done: "done"
         case .failed: "failed"
@@ -99,6 +100,7 @@ struct IslandView: View {
         case .interrupted: "interrupted"
         case .pairRequest: "pair-request"
         case .pairWaiting: "pair-waiting"
+        case .receiveRequest: "receive-request"
         case .notice: "notice"
         }
     }
@@ -128,6 +130,10 @@ struct IslandView: View {
                     device: transfer.device, title: "发送到 \(transfer.device.name)",
                     progress: transfer.progress, detail: transfer.stats.line, onCancel: model.cancelTransfer)
             }
+        case .awaiting:
+            if let transfer = model.transfer {
+                AwaitingContent(name: transfer.device.name, onCancel: model.cancelTransfer)
+            }
         case .queued(let position):
             if compactQueued {
                 CompactQueued(notch: model.mode)
@@ -140,8 +146,8 @@ struct IslandView: View {
                     symbol: "checkmark.circle.fill", color: Palette.success,
                     text: "已送达 \(transfer.device.name)", trailing: transfer.label)
             }
-        case .failed(let reason):
-            FailedContent(reason: reason, onRetry: model.retry)
+        case .failed(let reason, let canRetry):
+            FailedContent(reason: reason, canRetry: canRetry, onRetry: model.retry)
         case .refused(let name, let reason):
             StatusLine(symbol: "nosign", color: Palette.warning, text: "\(name) \(reason)，未发送")
         case .receiving:
@@ -154,10 +160,12 @@ struct IslandView: View {
             PairRequestContent(alias: alias, code: code, onDecline: model.declinePair, onAccept: model.acceptPair)
         case .pairWaiting(let alias):
             StatusLine(symbol: "clock", color: Palette.secondary, text: "等待 \(alias) 确认…")
-        case .notice(let text, let success):
+        case .receiveRequest(let request):
+            ReceiveRequestContent(request: request, onDecline: model.declineReceive, onAccept: model.acceptReceive)
+        case .notice(let text, let detail, let success):
             StatusLine(
                 symbol: success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                color: success ? Palette.success : Palette.warning, text: text)
+                color: success ? Palette.success : Palette.warning, text: text, trailing: detail)
         case .received:
             if let transfer = model.transfer {
                 ReceivedContent(transfer: transfer, onReveal: model.revealReceived)
@@ -349,6 +357,7 @@ private struct DeviceTile: View {
     }
 
     private var status: String {
+        if device.isLocalSend { return "LocalSend" }
         let state = device.needsRepair ? "需重新配对" : (device.online ? "在线" : "离线")
         return device.isDefault ? "\(state) · 默认" : state
     }
@@ -439,6 +448,33 @@ private struct QueuedContent: View {
     }
 }
 
+/// Sent to a LocalSend device, whose user accepts there first. Laid out
+/// like the queued state.
+private struct AwaitingContent: View {
+    let name: String
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.fill")
+                .font(.system(size: 17))
+                .foregroundStyle(Palette.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("等待 \(name) 接收…")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1)
+                Text("对方用 LocalSend，接收后开始发送")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            CancelButton(action: onCancel)
+        }
+    }
+}
+
 /// The queued state after a few seconds: a dot beside the camera.
 private struct CompactQueued: View {
     let notch: ScreenMode
@@ -498,8 +534,69 @@ private struct PairRequestContent: View {
     }
 }
 
+/// A LocalSend device asks to send files, or a text message to copy.
+private struct ReceiveRequestContent: View {
+    let request: ReceiveRequest
+    let onDecline: () -> Void
+    let onAccept: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Avatar(device: request.device, size: 30)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(request.text == nil ? "\(request.device.name) 想发送" : "\(request.device.name) 发来一段文字")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Palette.text)
+                        .lineLimit(1)
+                    if let preview = request.preview {
+                        Text(preview)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Palette.secondary)
+                            .lineLimit(2)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text(request.label)
+                                .lineLimit(1)
+                                // Keeps "等 3 个文件" when a long name has to give way.
+                                .truncationMode(.middle)
+                            Spacer(minLength: 0)
+                            Text(ByteCountFormatter.string(fromByteCount: request.total, countStyle: .file))
+                                .monospacedDigit()
+                        }
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.secondary)
+                    }
+                }
+                // The size lines up with the buttons' right edge.
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 8) {
+                Text("LocalSend")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.tertiary)
+                Spacer()
+                // Counts down to the automatic decline.
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    Button("\(request.text == nil ? "拒绝" : "忽略") \(remaining(at: context.date))", action: onDecline)
+                        .buttonStyle(PillButtonStyle())
+                }
+                Button(request.text == nil ? "接收" : "复制", action: onAccept)
+                    .buttonStyle(PillButtonStyle(fill: Palette.accent))
+            }
+        }
+    }
+
+    /// "42s", until the automatic decline.
+    private func remaining(at date: Date) -> String {
+        "\(max(0, Int(request.deadline.timeIntervalSince(date).rounded(.up))))s"
+    }
+
+}
+
 private struct FailedContent: View {
     let reason: String
+    let canRetry: Bool
     let onRetry: () -> Void
 
     var body: some View {
@@ -511,8 +608,10 @@ private struct FailedContent: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Palette.text)
             Spacer()
-            Button("重试", action: onRetry)
-                .buttonStyle(PillButtonStyle())
+            if canRetry {
+                Button("重试", action: onRetry)
+                    .buttonStyle(PillButtonStyle())
+            }
         }
     }
 }
@@ -522,6 +621,10 @@ private struct ReceivingContent: View {
     /// Other paired devices waiting to send.
     let waiting: Int
 
+    private var subtitle: String {
+        transfer.device.isLocalSend ? "LocalSend · 已同意接收" : "已配对 · 自动保存"
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
@@ -530,7 +633,7 @@ private struct ReceivingContent: View {
                     Text("\(transfer.device.name) 发来 \(transfer.fileCount) 个文件")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Palette.text)
-                    Text(waiting > 0 ? "还有 \(waiting) 个设备等待发送" : "已配对 · 自动保存")
+                    Text(waiting > 0 ? "还有 \(waiting) 个设备等待发送" : subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.secondary)
                 }
@@ -630,7 +733,8 @@ private struct PillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
+            // Digits keep their width, e.g. in a countdown.
+            .font(.system(size: 12, weight: .semibold).monospacedDigit())
             .foregroundStyle(Palette.text)
             .padding(.horizontal, 14)
             .padding(.vertical, 5)

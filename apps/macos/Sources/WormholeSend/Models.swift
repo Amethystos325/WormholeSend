@@ -1,7 +1,7 @@
-import Foundation
+import AppKit
 
-/// A paired device, as the core lists it (`devices.list`). The samples are
-/// for demo mode.
+/// A paired device (`devices.list`) or an online LocalSend device
+/// (`localsend.list`), as the core lists it. The samples are for demo mode.
 struct Device: Identifiable, Equatable {
     let id: String
     var name: String
@@ -11,20 +11,27 @@ struct Device: Identifiable, Equatable {
     var isDefault: Bool
     /// It refused a transfer: it no longer trusts this device.
     var needsRepair = false
+    /// Not paired: its user accepts every transfer, in LocalSend.
+    var isLocalSend = false
 
-    init(id: String, name: String, symbol: String, online: Bool, isDefault: Bool, needsRepair: Bool = false) {
+    init(
+        id: String, name: String, symbol: String, online: Bool, isDefault: Bool,
+        needsRepair: Bool = false, isLocalSend: Bool = false
+    ) {
         self.id = id
         self.name = name
         self.symbol = symbol
         self.online = online
         self.isDefault = isDefault
         self.needsRepair = needsRepair
+        self.isLocalSend = isLocalSend
     }
 
     init(info: DeviceInfo) {
         self.init(
             id: info.fingerprint, name: info.alias, symbol: Device.symbol(for: info.deviceType),
-            online: info.online, isDefault: info.isDefault, needsRepair: info.needsRepair)
+            online: info.online, isDefault: info.isDefault, needsRepair: info.needsRepair,
+            isLocalSend: info.kind == "localsend")
     }
 
     /// Can take files now. A device that needs pairing again counts as
@@ -47,6 +54,37 @@ struct Device: Identifiable, Equatable {
         Device(id: "air", name: "MacBook Air", symbol: "laptopcomputer", online: true, isDefault: false),
         Device(id: "ipad", name: "iPad", symbol: "ipad", online: false, isDefault: false),
     ]
+
+    static let localSendSample = Device(
+        id: "pixel", name: "Pixel 8", symbol: "iphone", online: true, isDefault: false, isLocalSend: true)
+}
+
+/// A LocalSend device asks to send files, or a text message (`receive.request`).
+struct ReceiveRequest: Equatable {
+    let id: String
+    let device: Device
+    /// "IMG_0001.jpg 等 3 个文件", as the core labels it.
+    let label: String
+    let total: Int64
+    let text: String?
+    /// When the core declines it unanswered: a minute after it arrived,
+    /// also while it waited behind something else on the island.
+    let deadline: Date
+
+    /// The core's `ASK_TIMEOUT`.
+    static let timeout: TimeInterval = 60
+
+    /// A text message on one line, for the preview.
+    var preview: String? {
+        text.map { $0.split(whereSeparator: \.isNewline).joined(separator: " ") }
+    }
+
+    /// Whether the preview needs a second line beside the avatar (about
+    /// 300 pt are left in the 380 pt island).
+    var previewWraps: Bool {
+        guard let preview else { return false }
+        return (preview as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width > 300
+    }
 }
 
 struct Transfer: Equatable {

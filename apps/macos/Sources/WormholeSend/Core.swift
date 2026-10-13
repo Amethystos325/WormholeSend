@@ -128,6 +128,8 @@ struct DeviceInfo: Decodable {
     let paired: Bool
     let isDefault: Bool
     let needsRepair: Bool
+    /// "wormhole" or "localsend".
+    let kind: String?
 }
 
 /// Every event of core/src/event.rs, with the union of their fields.
@@ -137,6 +139,7 @@ struct CoreEvent: Decodable {
     var deviceId: String?
     var alias: String?
     var deviceType: String?
+    var kind: String?
     var online: Bool?
     var paired: Bool?
     var direction: String?
@@ -154,4 +157,7 @@ struct CoreEvent: Decodable {
     var ok: Bool?
     var reason: String?
     var message: String?
+    var requestId: String?
+    var label: String?
+    var text: String?
 }

@@ -17,9 +17,13 @@ final class IslandModel {
         case picker(hot: Int?)
         case unavailable(String)
         case sending
+        /// Sent to a LocalSend device: waiting for its user to accept.
+        case awaiting
         case queued(position: Int)
         case done
-        case failed(String)
+        /// Without 重试 when the other side's user declined: retrying
+        /// would only ask them again.
+        case failed(String, canRetry: Bool)
         /// Released over a device that can't take files now; `reason` is
         /// "离线" or "需要重新配对".
         case refused(name: String, reason: String)
@@ -32,8 +36,12 @@ final class IslandModel {
         case pairRequest(pairId: String, alias: String, code: String)
         /// Accepted here, waiting for the other side.
         case pairWaiting(alias: String)
-        /// A short message: paired, pairing failed, unpaired.
-        case notice(text: String, success: Bool)
+        /// A LocalSend device asks to send: 拒绝 / 接收, or for a text
+        /// message 忽略 / 复制. Stays until answered, timed out or withdrawn.
+        case receiveRequest(ReceiveRequest)
+        /// A short message: paired, pairing failed, unpaired, copied; the
+        /// detail shows on the right.
+        case notice(text: String, detail: String?, success: Bool)
 
         /// Phases in which the island is the drop target under the cursor.
         var isOverIsland: Bool {
@@ -50,7 +58,8 @@ final class IslandModel {
         }
     }
     var mode: ScreenMode = .capsule
-    /// The paired devices, default first, as the core lists them.
+    /// The paired devices, default first, as the core lists them, then the
+    /// LocalSend devices online.
     var devices: [Device] = []
     var dragLabel = ""
     var transfer: Transfer?
@@ -77,11 +86,15 @@ final class IslandModel {
     /// Incoming pairing requests (from `pair.incoming`) by pairing ID; only
     /// these come onto the island. Pairings started here use a dialog.
     @ObservationIgnored private var incomingPairs: [String: String] = [:]
-    /// A request whose code arrived while the island was busy.
-    @ObservationIgnored private var pendingRequest: Phase?
+    /// Requests that need an answer (`pairRequest`, `receiveRequest`), in
+    /// arrival order; the island shows the first whenever it is free.
+    @ObservationIgnored private var pendingRequests: [Phase] = []
+    /// LocalSend senders that asked, for the receive that follows.
+    @ObservationIgnored private var requestSenders: [String: Device] = [:]
     @ObservationIgnored private var waitingPair: String?
 
     var defaultDevice: Device? { devices.first { $0.isDefault } }
+    var pairedDevices: [Device] { devices.filter { !$0.isLocalSend } }
     /// Devices that can take files now: online and still trusting this one.
     var usableDevices: [Device] { devices.filter(\.usable) }
     /// One send at a time, and no drags while a pairing waits for an answer.
@@ -89,7 +102,7 @@ final class IslandModel {
     /// incoming transfer again afterwards. Same rule as on Windows.
     var isBusy: Bool {
         switch phase {
-        case .sending, .queued, .pairRequest, .pairWaiting: true
+        case .sending, .awaiting, .queued, .pairRequest, .pairWaiting, .receiveRequest: true
         default: false
         }
     }
@@ -99,6 +112,8 @@ final class IslandModel {
     func dragStarted(files: [URL]) {
         guard !isBusy else { return }
         cancelTimers()
+        // Also asks LocalSend devices nearby to answer, for the picker.
+        reloadDevices()
         dragFiles = files
         dragLabel = FileLabel.of(files)
         phase = .hint
@@ -202,26 +217,32 @@ final class IslandModel {
 
     var hintText: String {
         if devices.isEmpty { return "还没有配对设备" }
-        if devices.count == 1, !devices[0].usable { return "\(devices[0].name) \(devices[0].unusableReason)，无法发送" }
+        if devices.count == 1 {
+            let device = devices[0]
+            return device.usable ? "移到这里发送到 \(device.name)" : "\(device.name) \(device.unusableReason)，无法发送"
+        }
         if let device = defaultDevice, device.usable { return "移到这里发送到 \(device.name)" }
-        return "默认设备\(defaultDevice?.unusableReason ?? "离线")，移到这里选其他设备"
+        guard let device = defaultDevice else { return "移到这里选择设备" }
+        return "默认设备\(device.unusableReason)，移到这里选其他设备"
     }
 
     // MARK: - Transfers (through the core)
 
-    /// Reloads the paired devices from the core.
+    /// Reloads the paired devices and the LocalSend devices online from the
+    /// core. Listing LocalSend devices also announces this one, so more
+    /// answer shortly (as `device.updated`).
     func reloadDevices() {
-        guard let core else { return }
-        if case .success(let list) = core.call("devices.list", as: [DeviceInfo].self) {
-            devices = list.map(Device.init(info:))
-        }
+        guard let core, case .success(let paired) = core.call("devices.list", as: [DeviceInfo].self) else { return }
+        let nearby = (try? core.call("localsend.list", as: [DeviceInfo].self).get()) ?? []
+        let room = max(0, Spec.pickerMaxDevices - paired.count)
+        devices = (paired + nearby.prefix(room)).map(Device.init(info:))
     }
 
     private func send(_ files: [URL], to device: Device) {
         cancelTimers()
         transfer = Transfer(device: device, files: files, label: FileLabel.of(files))
-        // Until the core reports the queue or the session.
-        phase = .sending
+        // Until the core reports the queue, the session or the wait.
+        phase = device.isLocalSend ? .awaiting : .sending
         guard let core else {
             fail("核心没有运行")
             return
@@ -238,9 +259,9 @@ final class IslandModel {
         schedule(after: Spec.refusedHold) { [weak self] in self?.settle() }
     }
 
-    private func fail(_ reason: String) {
+    private func fail(_ reason: String, canRetry: Bool = true) {
         Sound.failed.play()
-        phase = .failed(reason)
+        phase = .failed(reason, canRetry: canRetry)
         schedule(after: Spec.failedHold) { [weak self] in
             if case .failed = self?.phase { self?.settle() }
         }
@@ -262,7 +283,7 @@ final class IslandModel {
             transfer?.id = newId
             transfer?.progress = 0
             transfer?.stats = TransferStats()
-            phase = .sending
+            phase = transfer?.device.isLocalSend == true ? .awaiting : .sending
         case .failure(let failure):
             fail(failure.message)
         }
@@ -277,10 +298,12 @@ final class IslandModel {
             if let id = event.pairId { incomingPairs[id] = event.alias ?? "对方" }
         case "pair.code":
             if let id = event.pairId, let alias = incomingPairs[id], let code = event.code {
-                pendingRequest = .pairRequest(pairId: id, alias: alias, code: code)
-                Sound.pairRequest.play()
-                if canShowPairRequest { settle() }
+                ask(.pairRequest(pairId: id, alias: alias, code: code))
             }
+        case "receive.request":
+            receiveRequested(event)
+        case "receive.closed":
+            receiveRequestClosed(event)
         case "pair.result":
             reloadDevices()
             pairFinished(event)
@@ -293,6 +316,9 @@ final class IslandModel {
             queueCollapsed = false
             phase = .queued(position: event.position ?? 1)
             schedule(after: Spec.queuedHint) { [weak self] in self?.queueCollapsed = true }
+        case "transfer.waiting" where isCurrentSend(event):
+            cancelTimers()
+            phase = .awaiting
         case "transfer.started" where event.direction == "send" && isCurrentSend(event):
             cancelTimers()
             transfer?.progress = 0
@@ -335,13 +361,14 @@ final class IslandModel {
         case "cancelled":
             settle()
         default:
-            fail(event.error ?? "发送失败")
+            fail(event.error ?? "发送失败", canRetry: event.status != "declined")
         }
     }
 
     private func receiveStarted(_ event: CoreEvent) {
-        let device = devices.first { $0.id == event.deviceId }
-            ?? Device(id: event.deviceId ?? "", name: event.alias ?? "未知设备", symbol: "desktopcomputer", online: true, isDefault: false)
+        let id = event.deviceId ?? ""
+        let device = devices.first { $0.id == id } ?? requestSenders[id]
+            ?? Device(id: id, name: event.alias ?? "未知设备", symbol: "desktopcomputer", online: true, isDefault: false)
         let count = event.files ?? 0
         incoming = Transfer(id: event.id, device: device, files: [], label: "\(count) 个文件", count: count)
         if canShowIncoming {
@@ -382,17 +409,17 @@ final class IslandModel {
         }
     }
 
-    /// Whether a pairing request may take over the island now: not while
-    /// sending, queued or dragging.
-    private var canShowPairRequest: Bool {
+    /// Whether a request may take over the island now: not while sending,
+    /// queued, dragging or answering another request.
+    private var canShowRequest: Bool {
         canShowIncoming
     }
 
-    /// Back to rest: a waiting pairing request first (it needs an answer),
-    /// then the incoming transfer if one is running, else idle.
+    /// Back to rest: a waiting request first (it needs an answer), then the
+    /// incoming transfer if one is running, else idle.
     private func settle() {
         cancelTimers()
-        if let request = pendingRequest {
+        if let request = pendingRequests.first {
             phase = request
         } else if let incoming {
             transfer = incoming
@@ -402,11 +429,23 @@ final class IslandModel {
         }
     }
 
-    // MARK: - Pairing on the island
+    // MARK: - Requests on the island
+
+    /// Queues a request that needs an answer and shows it if the island is free.
+    private func ask(_ request: Phase) {
+        pendingRequests.append(request)
+        Sound.pairRequest.play()
+        if canShowRequest { settle() }
+    }
+
+    /// Takes requests off the queue, shown or not.
+    private func drop(where matches: (Phase) -> Bool) {
+        pendingRequests.removeAll(where: matches)
+    }
 
     func acceptPair() {
         guard case .pairRequest(let pairId, let alias, _) = phase else { return }
-        pendingRequest = nil
+        drop { $0 == phase }
         switch core?.call("pair.confirm", ["pairId": pairId, "accept": true]) {
         case .failure(let failure):
             showNotice("配对失败：\(failure.message)", success: false)
@@ -418,7 +457,7 @@ final class IslandModel {
 
     func declinePair() {
         guard case .pairRequest(let pairId, _, _) = phase else { return }
-        pendingRequest = nil
+        drop { $0 == phase }
         incomingPairs[pairId] = nil
         core?.call("pair.confirm", ["pairId": pairId, "accept": false])
         settle()
@@ -429,8 +468,8 @@ final class IslandModel {
         let alias = event.alias ?? incomingPairs[pairId] ?? "对方"
         incomingPairs[pairId] = nil
         let ok = event.ok == true
-        if case .pairRequest(let id, _, _)? = pendingRequest, id == pairId {
-            pendingRequest = nil
+        drop {
+            if case .pairRequest(let id, _, _) = $0 { id == pairId } else { false }
         }
         switch phase {
         case .pairRequest(let id, _, _) where id == pairId:
@@ -444,18 +483,84 @@ final class IslandModel {
         }
     }
 
-    private func showNotice(_ text: String, success: Bool) {
+    private func receiveRequested(_ event: CoreEvent) {
+        guard let id = event.requestId, let deviceId = event.deviceId else { return }
+        let device = devices.first { $0.id == deviceId }
+            ?? Device(
+                id: deviceId, name: event.alias ?? "未知设备", symbol: Device.symbol(for: event.deviceType),
+                online: true, isDefault: false, isLocalSend: true)
+        requestSenders[deviceId] = device
+        let request = ReceiveRequest(
+            id: id, device: device, label: event.label ?? "\(event.files ?? 0) 个文件",
+            total: event.total ?? 0, text: event.text, deadline: .now + ReceiveRequest.timeout)
+        ask(.receiveRequest(request))
+    }
+
+    /// Timed out (declined by the core; the countdown said so, the island
+    /// just closes) or withdrawn by the sender.
+    private func receiveRequestClosed(_ event: CoreEvent) {
+        guard let id = event.requestId else { return }
+        drop {
+            if case .receiveRequest(let request) = $0 { request.id == id } else { false }
+        }
+        guard case .receiveRequest(let request) = phase, request.id == id else { return }
+        if event.reason == "timeout" {
+            settle()
+        } else {
+            showNotice("\(request.device.name) 取消了发送", success: false)
+        }
+    }
+
+    /// Accepts the request on the island: files start arriving, a text
+    /// message goes to the clipboard.
+    func acceptReceive() {
+        guard case .receiveRequest(let request) = phase else { return }
+        drop { $0 == phase }
+        let open = respond(to: request, accept: true)
+        if let text = request.text {
+            // Copied even when the sender gave up meanwhile: the text is here.
+            NSPasteboard.general.clearContents()
+            guard NSPasteboard.general.setString(text, forType: .string) else {
+                showNotice("无法写入剪贴板", success: false)
+                return
+            }
+            let preview = request.preview ?? text
+            showNotice("已复制到剪贴板", detail: preview.count > 11 ? "\(preview.prefix(11))…" : preview, success: true)
+        } else if open {
+            // The transfer's own events follow.
+            settle()
+        } else {
+            showNotice("\(request.device.name) 已取消发送", success: false)
+        }
+    }
+
+    func declineReceive() {
+        guard case .receiveRequest(let request) = phase else { return }
+        drop { $0 == phase }
+        respond(to: request, accept: false)
+        settle()
+    }
+
+    /// Returns whether the request was still waiting for the answer.
+    @discardableResult
+    private func respond(to request: ReceiveRequest, accept: Bool) -> Bool {
+        let arguments: [String: Any] = ["requestId": request.id, "accept": accept]
+        return (try? core?.call("receive.respond", arguments, as: Bool.self).get()) ?? false
+    }
+
+    private func showNotice(_ text: String, detail: String? = nil, success: Bool) {
         guard canShowIncoming || isPairing else { return }
         cancelTimers()
-        phase = .notice(text: text, success: success)
+        phase = .notice(text: text, detail: detail, success: success)
         schedule(after: success ? Spec.doneHold : Spec.failedHold) { [weak self] in
             if case .notice = self?.phase { self?.settle() }
         }
     }
 
+    /// A request or a pairing on screen, which a notice may replace.
     private var isPairing: Bool {
         switch phase {
-        case .pairRequest, .pairWaiting: true
+        case .pairRequest, .pairWaiting, .receiveRequest: true
         default: false
         }
     }
@@ -508,15 +613,16 @@ final class IslandModel {
         // The default device row, then the strip (`Spec.moreStripHeight`
         // including the bottom padding) along the bottom edge.
         case .target: content = CGSize(width: 360, height: 92)
-        case .picker: content = devices.count == 1 ? CGSize(width: 380, height: 64) : CGSize(width: Spec.pickerWidth, height: 122)
+        case .picker: content = devices.count == 1 ? CGSize(width: 380, height: 64) : CGSize(width: pickerWidth, height: 122)
         case .unavailable: content = CGSize(width: 300, height: 24)
         case .queued where queueCollapsed:
             if case .notch(let width, let height) = mode { return CGSize(width: width + 76, height: height) }
             return CGSize(width: 150, height: 30)
         case .sending: content = CGSize(width: 340, height: 56)
-        case .queued: content = CGSize(width: 340, height: 40)
+        case .queued, .awaiting: content = CGSize(width: 340, height: 40)
         case .done, .failed, .refused, .interrupted, .pairWaiting, .notice: content = CGSize(width: 340, height: 28)
         case .pairRequest: content = CGSize(width: 380, height: 78)
+        case .receiveRequest(let request): content = CGSize(width: 380, height: request.previewWraps ? 92 : 78)
         case .receiving: content = CGSize(width: 384, height: 60)
         case .received: content = CGSize(width: 400, height: 76)
         }
@@ -526,6 +632,12 @@ final class IslandModel {
         case .capsule:
             return CGSize(width: content.width, height: content.height + 24)
         }
+    }
+
+    /// Wider from five devices on, so each keeps a usable column (as on
+    /// Windows).
+    private var pickerWidth: CGFloat {
+        min(Spec.pickerMaxWidth, max(Spec.pickerWidth, 28 + 84 * CGFloat(devices.count)))
     }
 
     /// The island body in panel coordinates (origin top left).

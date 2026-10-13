@@ -125,10 +125,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func describe(_ event: CoreEvent) -> String {
         var parts = ["event", event.event]
-        if let id = event.id ?? event.pairId { parts.append(id) }
+        if let id = event.id ?? event.pairId ?? event.requestId { parts.append(id) }
+        if let kind = event.kind { parts.append(kind) }
         if let count = event.count { parts.append("count \(count)") }
         if let position = event.position { parts.append("position \(position)") }
         if let status = event.status { parts.append(status) }
+        if let reason = event.reason { parts.append(reason) }
         return parts.joined(separator: " ")
     }
 
@@ -324,10 +326,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if core != nil {
             model.reloadDevices()
-            menu.addItem(disabledItem(model.devices.isEmpty ? "还没有配对设备" : "已配对设备", symbol: "link"))
+            menu.addItem(disabledItem(model.pairedDevices.isEmpty ? "还没有配对设备" : "已配对设备", symbol: "link"))
             let repair = (try? core?.call("devices.list", as: [DeviceInfo].self).get())?
                 .filter(\.needsRepair).map(\.fingerprint) ?? []
-            for device in model.devices {
+            for device in model.pairedDevices {
                 var title = device.name
                 if !device.online { title += "（离线）" }
                 if repair.contains(device.id) { title += "（需要重新配对）" }
@@ -418,7 +420,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func unpair(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String,
-            let device = model.devices.first(where: { $0.id == id })
+            let device = model.pairedDevices.first(where: { $0.id == id })
         else { return }
         let alert = NSAlert()
         alert.messageText = "解除与 \(device.name) 的配对？"
