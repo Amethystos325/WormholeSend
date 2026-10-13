@@ -79,7 +79,6 @@ static class Glyphs
 {
     public static readonly FontFamily Font = new("Segoe Fluent Icons, Segoe MDL2 Assets");
 
-    public const string Upload = "";          // arrow.up.to.line
     public const string Desktop = "";         // desktopcomputer
     public const string Laptop = "";          // laptopcomputer
     public const string Tablet = "";          // ipad

@@ -50,12 +50,19 @@ sealed class HintContent : PhaseContent
 {
     public HintContent(string text)
     {
-        var row = Ui.Row(6,
-            Ui.Icon(Glyphs.Upload, 12, Palette.HintText),
-            Ui.Text(text, 12.5, Palette.HintText, FontWeights.Medium));
+        // As tall as the text looks: the black hole fills about half its grid.
+        var icon = new Image { Source = AppIcon.BlackHole, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center };
+        var label = Ui.Text(text, 12.5, Palette.HintText, FontWeights.Medium);
+        // Chinese glyphs sit low in their line; a pixel up they look centered.
+        label.RenderTransform = new TranslateTransform(0, -1);
+        var row = Ui.Row(7, icon, label);
         row.HorizontalAlignment = HorizontalAlignment.Center;
-        row.VerticalAlignment = VerticalAlignment.Top;
+        row.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(row);
+        // The content height of the hint (IslandModel.BodySizeFor), so the
+        // row sits in the middle of the capsule, not below the top padding.
+        Height = 22;
+        VerticalAlignment = VerticalAlignment.Top;
     }
 }
 
