@@ -2,7 +2,7 @@ import AppKit
 
 /// The menu bar icon: a black hole drawn as its photon ring, the accretion
 /// disk tilted across it (assets/tray-icon.svg). Drawn on a 24-unit grid,
-/// y down.
+/// y down. In the app icon's colors it also marks the island's hint.
 ///
 /// The disk's far half hides behind the ring and its near half passes in
 /// front, so each part is cut out with a gap around what lies over it.
@@ -15,10 +15,23 @@ enum StatusIcon {
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
             context.scaleBy(x: scale, y: scale)
             let color = warning ? NSColor.labelColor.cgColor : NSColor.black.cgColor
-            draw(in: context, color: color, warning: warning)
+            draw(in: context, colors: Colors(ring: color, disk: nil), warning: warning)
             return true
         }
         image.isTemplate = !warning
+        image.accessibilityDescription = "Wormhole Send"
+        return image
+    }
+
+    /// The app icon's black hole (assets/app-icon.svg) without its plate: a
+    /// cream ring and the disk in warm light.
+    static func colored(scale: CGFloat) -> NSImage {
+        let image = NSImage(size: NSSize(width: size.width * scale, height: size.height * scale), flipped: true) { _ in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.scaleBy(x: scale, y: scale)
+            draw(in: context, colors: .app, warning: false)
+            return true
+        }
         image.accessibilityDescription = "Wormhole Send"
         return image
     }
@@ -36,14 +49,34 @@ enum StatusIcon {
     private static let badge = (center: CGPoint(x: 20.0, y: 17.0), radius: CGFloat(2.9))
     private static let amber = CGColor(srgbRed: 0.94, green: 0.62, blue: 0.15, alpha: 1)
 
-    private static func draw(in context: CGContext, color: CGColor, warning: Bool) {
+    private struct Colors {
+        let ring: CGColor
+        /// Along the disk; nil strokes it in the ring's color.
+        let disk: CGGradient?
+
+        /// Computed: a CGGradient can't sit in a shared static.
+        static var app: Colors {
+            Colors(
+                ring: CGColor(srgbRed: 0xF7 / 255, green: 0xF3 / 255, blue: 0xEA / 255, alpha: 1),
+                disk: CGGradient(
+                    colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+                    colors: [
+                        CGColor(srgbRed: 0xF2 / 255, green: 0x68 / 255, blue: 0x3C / 255, alpha: 1),
+                        CGColor(srgbRed: 0xFF / 255, green: 0xB5 / 255, blue: 0x47 / 255, alpha: 1),
+                        CGColor(srgbRed: 0xFF / 255, green: 0xE3 / 255, blue: 0xA3 / 255, alpha: 1),
+                    ] as CFArray,
+                    locations: [0, 0.55, 1]))
+        }
+    }
+
+    private static func draw(in context: CGContext, colors: Colors, warning: Bool) {
         context.translateBy(x: -1, y: -4)
         context.saveGState()
         // Opaque strokes on one layer, faded as a whole: a translucent color
         // (labelColor) would darken where the disk's halves overlap.
-        context.setAlpha(color.alpha)
+        context.setAlpha(colors.ring.alpha)
         context.beginTransparencyLayer(auxiliaryInfo: nil)
-        let color = color.copy(alpha: 1) ?? color
+        let color = colors.ring.copy(alpha: 1) ?? colors.ring
         context.translateBy(x: 12, y: 12)
         context.rotate(by: tilt)
         context.setStrokeColor(color)
@@ -53,9 +86,7 @@ enum StatusIcon {
         // Each part on a layer of its own, so a cut-out only affects it.
         // The far half of the disk, hidden behind the ring.
         layer(context) {
-            $0.addPath(diskHalf(front: false))
-            $0.setLineWidth(disk.width)
-            $0.strokePath()
+            strokeDisk(front: false, in: $0, gradient: colors.disk)
             clear($0) { $0.addEllipse(in: circle(radius: ring.radius + ring.width / 2 + gap + disk.width / 2)) }
         }
 
@@ -72,9 +103,7 @@ enum StatusIcon {
         }
 
         // The near half of the disk.
-        context.addPath(diskHalf(front: true))
-        context.setLineWidth(disk.width)
-        context.strokePath()
+        strokeDisk(front: true, in: context, gradient: colors.disk)
         context.endTransparencyLayer()
         context.restoreGState()
 
@@ -92,6 +121,20 @@ enum StatusIcon {
             center: .zero, radius: disk.rx, startAngle: .pi, endAngle: 0, clockwise: front,
             transform: CGAffineTransform(scaleX: 1, y: disk.ry / disk.rx))
         return path
+    }
+
+    /// A gradient runs along the disk's long axis, as in app-icon.svg.
+    private static func strokeDisk(front: Bool, in context: CGContext, gradient: CGGradient?) {
+        context.addPath(diskHalf(front: front))
+        context.setLineWidth(disk.width)
+        guard let gradient else { return context.strokePath() }
+        context.saveGState()
+        context.replacePathWithStrokedPath()
+        context.clip()
+        context.drawLinearGradient(
+            gradient, start: CGPoint(x: -disk.rx, y: 0), end: CGPoint(x: disk.rx, y: 0),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        context.restoreGState()
     }
 
     private static func layer(_ context: CGContext, _ draw: (CGContext) -> Void) {

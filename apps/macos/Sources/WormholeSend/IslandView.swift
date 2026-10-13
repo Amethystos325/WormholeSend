@@ -39,11 +39,14 @@ struct IslandView: View {
         ZStack(alignment: .top) {
             shape.fill(Palette.island)
             // The compact form sits beside the camera, centered in the band;
-            // every other phase lays out below it.
+            // a single line centers in the space below the camera; every
+            // other phase lays out from the top, below it.
             content
-                .padding(.top, compactQueued ? 0 : (mode.isNotch ? mode.cameraBand + 6 : 12))
+                .padding(.top, compactQueued ? 0 : isSingleLine ? mode.cameraBand : (mode.isNotch ? mode.cameraBand + 6 : 12))
                 .padding(.horizontal, (compactQueued ? 12 : 16) + shoulder)
-                .frame(width: size.width + 2 * shoulder, height: size.height, alignment: compactQueued ? .center : .top)
+                .frame(
+                    width: size.width + 2 * shoulder, height: size.height,
+                    alignment: compactQueued || isSingleLine ? .center : .top)
                 .id(contentKey)
                 .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
         }
@@ -63,6 +66,14 @@ struct IslandView: View {
             return AnyShape(NotchShape(shoulder: 8, bottomRadius: radius))
         case .capsule:
             return AnyShape(RoundedRectangle(cornerRadius: min(24, size.height / 2), style: .continuous))
+        }
+    }
+
+    /// Phases whose content is one line.
+    private var isSingleLine: Bool {
+        switch model.phase {
+        case .hint, .unavailable, .done, .failed, .refused, .interrupted, .pairWaiting, .notice: true
+        default: false
         }
     }
 
@@ -161,10 +172,14 @@ private struct HintContent: View {
     let text: String
 
     var body: some View {
-        Label(text, systemImage: "arrow.up.to.line")
-            .font(.system(size: 12.5, weight: .medium))
-            .foregroundStyle(Color(white: 0.86))
-            .frame(maxWidth: .infinity)
+        HStack(spacing: 7) {
+            // The app icon's black hole, about as tall as the text.
+            Image(nsImage: StatusIcon.colored(scale: 0.9))
+            Text(text)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Color(white: 0.86))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
