@@ -18,36 +18,30 @@ abstract class PhaseContent : DockPanel
 
     public virtual void Update(IslandModel model, Phase phase) { }
 
-    public static PhaseContent Build(IslandModel model, Phase phase, bool compactQueued) => phase switch
+    public static PhaseContent Build(IslandModel model, Phase phase, bool compactQueued) =>
+        Build(model, phase, compactQueued, StatusLines.Fit(model, phase)?.Scale ?? 1);
+
+    /// `scale`: of a one-line state's text, which shrinks when it is longer
+    /// than the widest island.
+    static PhaseContent Build(IslandModel model, Phase phase, bool compactQueued, double scale) => phase switch
     {
-        Phase.Hint => new HintContent(model.HintText),
+        Phase.Hint => new HintContent(model.HintText, scale),
         Phase.Target when model.DefaultDevice is { } device =>
             new TargetContent(device, model.Targets.Where(d => d != device).ToList()),
         Phase.Picker when model.Targets.Count == 1 => new SingleTargetContent(model.Targets[0], model.DragLabel),
         Phase.Picker => new PickerContent(model.Targets, model.DragLabel),
-        // Its content is 24 high, not 28 as the other status lines.
-        Phase.Unavailable u => new StatusLine(Glyphs.NoNetwork, Palette.Secondary, u.Text) { Height = 24 },
         Phase.Sending when model.Transfer is { } t =>
             new ProgressContent(t.Device, L.T($"发送到 {t.Device.Name}", $"Sending to {t.Device.Name}", $"{t.Device.Name} に送信中"), model.CancelTransfer),
         Phase.Queued when compactQueued => new CompactQueued(),
         Phase.Queued q => new QueuedContent(q.Position, model.CancelTransfer),
         Phase.AwaitingAcceptance a => new AwaitingContent(a.Alias, model.CancelTransfer),
-        Phase.Done when model.Transfer is { } t =>
-            new StatusLine(Glyphs.CheckFilled, Palette.Success, L.T($"已送达 {t.Device.Name}", $"Delivered to {t.Device.Name}", $"{t.Device.Name} に送信しました"), t.Label),
-        Phase.Failed f => new FailedContent(f.Reason, f.CanRetry ? model.Retry : null),
-        Phase.Refused { NeedsRepair: true } r => new StatusLine(Glyphs.Blocked, Palette.Warning,
-            L.T($"{r.Name} 需要重新配对，未发送", $"{r.Name} needs re-pairing. Not sent", $"{r.Name} は再ペアリングが必要です。送信していません")),
-        Phase.Refused r => new StatusLine(Glyphs.Blocked, Palette.Warning,
-            L.T($"{r.Name} 离线，未发送", $"{r.Name} is offline. Not sent", $"{r.Name} はオフラインです。送信していません")),
+        Phase.Failed f => new FailedContent(f.Reason, f.CanRetry ? model.Retry : null, scale),
         Phase.Receiving when model.Transfer is { } t => new ReceivingContent(t),
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
         Phase.PairRequest p => new PairRequestContent(p, model.AnswerPair),
         Phase.ReceiveRequest r => new ReceiveRequestContent(r, model),
-        Phase.PairWaiting p => new StatusLine(Glyphs.Clock, Palette.Secondary, L.T($"等待 {p.Alias} 确认…", $"Waiting for {p.Alias} to confirm…", $"{p.Alias} の確認を待っています…")),
-        // A notice's detail is the start of a text: it gives way at its end.
-        Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text, n.Detail, trimEnd: true),
-        Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text, n.Detail, trimEnd: true),
-        Phase.Interrupted i => new StatusLine(Glyphs.WarningFilled, Palette.Warning, L.T("传输中断", "Transfer interrupted", "転送が中断されました"), i.Reason),
+        // The one-line states; "无法发送" is 24 high, the others 28.
+        _ when StatusLines.For(model, phase) is { } line => new StatusLine(line, scale) { Height = phase is Phase.Unavailable ? 24 : 28 },
         _ => new EmptyContent(),
     };
 }
@@ -56,11 +50,11 @@ sealed class EmptyContent : PhaseContent;
 
 sealed class HintContent : PhaseContent
 {
-    public HintContent(string text)
+    public HintContent(string text, double scale)
     {
         // As tall as the text looks: the black hole fills about half its grid.
         var icon = new Image { Source = AppIcon.BlackHole, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center };
-        var row = Ui.Row(7, icon, Ui.Centered(Ui.Text(text, 12.5, Palette.HintText, FontWeights.Medium)));
+        var row = Ui.Row(7, icon, Ui.Centered(Ui.Text(text, 12.5 * scale, Palette.HintText, FontWeights.Medium)));
         row.HorizontalAlignment = HorizontalAlignment.Center;
         row.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(row);
@@ -221,22 +215,23 @@ sealed class DeviceTile : Border
 
 sealed class StatusLine : PhaseContent
 {
-    /// `trailing` gives way in the middle (a label keeps "等 3 个文件"), or
-    /// at its end.
-    public StatusLine(string glyph, Brush color, string text, string? trailing = null, bool trimEnd = false)
+    /// The trailing text gives way in the middle (a label keeps "等 3 个文件"),
+    /// or at its end.
+    public StatusLine(StatusText line, double scale)
     {
+        var (glyph, color, text, trailing, trimEnd) = line;
         var icon = Ui.Dock(Ui.Icon(glyph, 17, color), Dock.Left);
         icon.Margin = new Thickness(0, 0, 10, 0);
         Children.Add(icon);
         if (trailing is not null)
         {
-            FrameworkElement shortened = trimEnd ? Ui.Text(trailing, 11, Palette.Secondary) : new MiddleText(trailing, 11, Palette.Secondary);
+            FrameworkElement shortened = trimEnd ? Ui.Text(trailing, 11 * scale, Palette.Secondary) : new MiddleText(trailing, 11 * scale, Palette.Secondary);
             var label = Ui.Dock(Ui.Centered(shortened), Dock.Right);
             label.Margin = new Thickness(8, 0, 0, 0);
             label.MaxWidth = 140;
             Children.Add(label);
         }
-        Children.Add(Ui.Centered(Ui.Text(text, 13, Palette.Text, FontWeights.Medium)));
+        Children.Add(Ui.Centered(Ui.Text(text, 13 * scale, Palette.Text, FontWeights.Medium)));
         VerticalAlignment = VerticalAlignment.Top;
         Height = 28;
     }
@@ -343,13 +338,18 @@ sealed class CompactQueued : PhaseContent
 
 sealed class FailedContent : PhaseContent
 {
-    public FailedContent(string reason, Action? onRetry)
+    public FailedContent(string reason, Action? onRetry, double scale)
     {
         var icon = Ui.Dock(Ui.Icon(Glyphs.WarningFilled, 16, Palette.Warning), Dock.Left);
         icon.Margin = new Thickness(0, 0, 10, 0);
         Children.Add(icon);
-        if (onRetry is not null) Children.Add(Ui.Dock(new PillButton(L.T("重试", "Retry", "再試行"), onRetry), Dock.Right));
-        Children.Add(Ui.Centered(Ui.Text(L.T($"发送失败：{reason}", $"Couldn't send: {reason}", $"送信失敗：{reason}"), 13, Palette.Text, FontWeights.Medium)));
+        if (onRetry is not null)
+        {
+            var retry = Ui.Dock(new PillButton(StatusLines.RetryTitle, onRetry), Dock.Right);
+            retry.Margin = new Thickness(8, 0, 0, 0);
+            Children.Add(retry);
+        }
+        Children.Add(Ui.Centered(Ui.Text(StatusLines.FailedText(reason), 13 * scale, Palette.Text, FontWeights.Medium)));
         VerticalAlignment = VerticalAlignment.Top;
         Height = 28;
     }

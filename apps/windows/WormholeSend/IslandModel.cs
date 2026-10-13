@@ -694,12 +694,14 @@ sealed class IslandModel : INotifyPropertyChanged
     public Size BodySizeFor(Phase phase)
     {
         Size content;
+        // The one-line states are as wide as what they say (StatusLines).
+        var fit = StatusLines.Fit(this, phase)?.Width;
         switch (phase)
         {
             case Phase.Idle:
                 return new Size(160, 30);
             case Phase.Hint:
-                content = new Size(260, 22);
+                content = new Size(fit ?? 260, 22);
                 break;
             // The default device row, then the strip (`Spec.MoreStripHeight`
             // including the bottom padding) along the bottom edge.
@@ -711,7 +713,7 @@ sealed class IslandModel : INotifyPropertyChanged
                 content = count == 1 ? new Size(380, 64) : new Size(PickerWidth(count), 122);
                 break;
             case Phase.Unavailable:
-                content = new Size(300, 24);
+                content = new Size(fit ?? 300, 24);
                 break;
             case Phase.Queued when queueCollapsed:
                 return new Size(150, 30);
@@ -723,7 +725,7 @@ sealed class IslandModel : INotifyPropertyChanged
                 content = new Size(340, 40);
                 break;
             case Phase.Done or Phase.Failed or Phase.Refused or Phase.Notice or Phase.PairWaiting or Phase.Interrupted:
-                content = new Size(340, 28);
+                content = new Size(fit ?? 340, 28);
                 break;
             case Phase.Receiving:
                 content = new Size(384, 60);

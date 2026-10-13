@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows;
 using System.Runtime.CompilerServices;
 
 // The interface language is the process's: tests take turns.
@@ -63,6 +64,38 @@ public sealed class LanguageTests : IDisposable
         Assert.Equal("報告.docx など 2 個のファイル", FileLabel.Of([file, other]));
         Assert.Equal("報告.docx など 3 個の項目", FileLabel.Of([file, folder, other]));
         Assert.Equal("3 個のファイル", L.Files(3));
+    }
+
+    [Fact]
+    public void OneLineStatesAreAsWideAsTheirText()
+    {
+        L.Use(UiLanguage.En);
+        var model = new IslandModel();
+        // Short: the usual width.
+        Assert.Equal(340, model.BodySizeFor(new Phase.Failed("The network dropped")).Width);
+        // Longer: wider, still one line.
+        var pin = model.BodySizeFor(new Phase.Failed("Pixel 8 asks for a PIN, which isn't supported yet")).Width;
+        Assert.InRange(pin, 341, 527);
+        Assert.Equal((pin, 1.0), StatusLines.Fit(model, new Phase.Failed("Pixel 8 asks for a PIN, which isn't supported yet")));
+        // Too long even for the widest island: the text shrinks.
+        var essay = new Phase.Failed(string.Join(" ", Enumerable.Repeat("The connection dropped", 6)));
+        Assert.Equal((528.0, 0.85), StatusLines.Fit(model, essay));
+        // Not one-line states: no fit.
+        Assert.Null(StatusLines.Fit(model, new Phase.Sending()));
+    }
+
+    [Fact]
+    public void AWiderHintIsAWiderDropArea()
+    {
+        L.Use(UiLanguage.En);
+        var model = new IslandModel { Devices = Device.Samples.Select(d => d with { Online = !d.IsDefault }).ToList() };
+        model.DragStarted();
+        Assert.Equal("Default device offline. Move here to choose another", model.HintText);
+        var width = model.BodySize.Width;
+        Assert.True(width > 260, $"{width}");
+        // Just inside its left edge (and the 24 px around it), the drag is over the island.
+        model.DragMoved(new Point((560 - width) / 2 - 20, 20), 560);
+        Assert.IsType<Phase.Picker>(model.Phase);
     }
 
     [Fact]

@@ -29,6 +29,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
 | `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
 | `AppIcon.cs` | The app icon (`assets/app-icon.ico`, made on the Mac from `app-icon.svg`) in the title bars; also the exe's icon |
+| `StatusLines.cs` | What the one-line states say, and their width: as wide as the text, up to 528; past that the text shrinks to 85 % (as on macOS) |
 | `Lang.cs`, `Strings.cs` | The interface language (English, Chinese, Japanese) and the windows' texts |
 | `SettingsWindow`, `PairWindow`, `WelcomeWindow` | Settings (7.1), pairing with the 6-digit code (3.1), first-run guide (7.3) |
 
@@ -56,7 +57,7 @@ WormholeSend.exe --fake --menu [--snapshot out.png]   # the tray menu with a sub
 WormholeSend.exe … --lang en|zh|ja                    # any of the above in a language, for this run
 ```
 
-`--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `pair-request` `notice`, and for LocalSend `receive-request` `receive-text` `copied` `awaiting` `picker-localsend`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.
+`--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `failed-long` `refused` `receiving` `received` `pair-request` `notice`, and for LocalSend `receive-request` `receive-text` `copied` `awaiting` `picker-localsend`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.
 
 ## Checks
 

@@ -17,7 +17,7 @@ namespace WormholeSend;
 /// `--fake` uses simulated devices and transfers, switched from the tray
 /// menu, without the core. `--demo` freezes one phase, as in the macOS
 /// app: hint, target, picker, picker-offline, single, unavailable, sending,
-/// queued, queued-compact, done, failed, refused, receiving, received,
+/// queued, queued-compact, done, failed, failed-long, refused, receiving, received,
 /// pair-request, notice; and for LocalSend devices receive-request,
 /// receive-text, copied, awaiting, picker-localsend. `--snapshot` captures the island's window from the
 /// screen once the animation settled, then quits. `--selftest` runs the
@@ -123,6 +123,13 @@ static class Demo
                 case "failed":
                     model.Transfer = sample;
                     model.Phase = new Phase.Failed(L.T("网络中断", "The network dropped", "ネットワークが切断されました"));
+                    break;
+                // As the core says it when a LocalSend device wants a PIN.
+                case "failed-long":
+                    model.Transfer = sample;
+                    model.Phase = new Phase.Failed(L.T(
+                        "Pixel 8 开启了 PIN，暂不支持", "Pixel 8 asks for a PIN, which isn't supported yet",
+                        "Pixel 8 は PIN を必要としていますが、まだ対応していません"));
                     break;
                 case "refused": model.Phase = new Phase.Refused("iPad"); break;
                 case "receiving":
