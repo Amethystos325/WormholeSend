@@ -5,6 +5,7 @@ use anyhow::{Context, anyhow, bail};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use wormhole_core::Node;
 use wormhole_core::config::Settings;
 use wormhole_core::identity::Identity;
@@ -16,7 +17,11 @@ pub(crate) fn run(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value
         "settings.set" => return set_settings(shared, command),
         _ => {}
     }
-    let slot = shared.node.try_read().map_err(|_| anyhow!("正在重新启动服务，请稍后再试"))?;
+    let restarting = || anyhow!("正在重新启动服务，请稍后再试");
+    if shared.restarting.load(Ordering::SeqCst) {
+        return Err(restarting());
+    }
+    let slot = shared.node.try_read().map_err(|_| restarting())?;
     let node = slot.as_ref().context("服务没有在运行")?;
     // Commands that spawn work need the runtime.
     let _runtime = shared.handle.enter();
@@ -85,7 +90,8 @@ fn send(shared: &Shared, node: &Node, device: &str, paths: Vec<PathBuf>) -> anyh
 /// services use, or the saved settings while they restart.
 pub(crate) fn settings(shared: &Shared) -> anyhow::Result<Value> {
     let home = shared.start.lock().unwrap().home();
-    if let Ok(slot) = shared.node.try_read()
+    if !shared.restarting.load(Ordering::SeqCst)
+        && let Ok(slot) = shared.node.try_read()
         && let Some(node) = slot.as_ref()
     {
         let settings = node.settings();

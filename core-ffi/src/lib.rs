@@ -42,6 +42,10 @@ pub(crate) struct Shared {
     node: RwLock<Option<Node>>,
     /// Set by `wh_stop`: no restart may bring the node back.
     stopped: AtomicBool,
+    /// From `settings.set` until the services run again. Set before
+    /// `settings.set` returns, so no command reaches the old services after
+    /// it (the restart thread may take the node a moment later).
+    restarting: AtomicBool,
     events: Mutex<Option<mpsc::Sender<String>>>,
     /// Transfers in progress (sending, queued or receiving), from the events.
     active: Mutex<HashSet<String>>,
@@ -171,6 +175,7 @@ fn start(config: StartConfig, on_event: WhEventCallback, context: Context) -> an
         start: Mutex::new(config),
         node: RwLock::new(Some(node)),
         stopped: AtomicBool::new(false),
+        restarting: AtomicBool::new(false),
         events: Mutex::new(Some(sender)),
         active: Mutex::default(),
         sends: Mutex::default(),
@@ -216,9 +221,11 @@ impl Shared {
     /// Stops the services and starts them again with the saved settings, on
     /// a thread of its own; commands fail with "restarting" meanwhile.
     fn restart(self: &Arc<Self>) {
+        self.restarting.store(true, Ordering::SeqCst);
         let shared = self.clone();
         std::thread::spawn(move || {
             let mut slot = shared.node.write().unwrap_or_else(|e| e.into_inner());
+            let _done = Cleared(&shared.restarting);
             if shared.stopped.load(Ordering::SeqCst) {
                 return;
             }
@@ -236,6 +243,15 @@ impl Shared {
                 }),
             }
         });
+    }
+}
+
+/// Clears a flag when dropped, however the restart ends.
+struct Cleared<'a>(&'a AtomicBool);
+
+impl Drop for Cleared<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
 
