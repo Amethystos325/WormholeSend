@@ -112,6 +112,12 @@ pub extern "C" fn wh_version() -> *const c_char {
 /// Returns `{"ok":true,"result":<settings.get>}` and sets `*core_out`, or
 /// `{"ok":false,"error":"…"}` and sets `*core_out` to NULL. Free the string
 /// with `wh_free_string`.
+///
+/// # Safety
+///
+/// `config_json` is NULL or a NUL-terminated string. `core_out` is NULL or
+/// points to writable storage for a pointer. `on_event` and `ctx` stay
+/// valid until `wh_stop` returns.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wh_start(
     config_json: *const c_char,
@@ -245,6 +251,11 @@ impl Shared {
 /// `device.unpair` (deviceId), `device.setDefault` (deviceId),
 /// `settings.get`, `settings.set` (alias?, saveDir?). core-ffi/README.md
 /// describes their results.
+///
+/// # Safety
+///
+/// `core` is NULL or a core from `wh_start` that `wh_stop` has not freed.
+/// `command_json` is NULL or a NUL-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wh_command(core: *const WhCore, command_json: *const c_char) -> *mut c_char {
     let response = guard(|| {
@@ -261,6 +272,11 @@ pub unsafe extern "C" fn wh_command(core: *const WhCore, command_json: *const c_
 }
 
 /// Frees a string returned by `wh_start` or `wh_command`. NULL is ignored.
+///
+/// # Safety
+///
+/// `string` is NULL or a string from `wh_start` or `wh_command`, freed only
+/// once.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wh_free_string(string: *mut c_char) {
     if !string.is_null() {
@@ -270,6 +286,11 @@ pub unsafe extern "C" fn wh_free_string(string: *mut c_char) {
 
 /// Stops the core and frees it. Waits for an event callback in progress;
 /// no events arrive after it returns. NULL is ignored.
+///
+/// # Safety
+///
+/// `core` is NULL or a core from `wh_start`, stopped only once and not used
+/// afterwards. Not to be called from the event callback.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wh_stop(core: *mut WhCore) {
     if core.is_null() {

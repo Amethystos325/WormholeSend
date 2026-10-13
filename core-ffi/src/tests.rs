@@ -82,7 +82,8 @@ fn failures_come_back_as_json() {
     let response = take(unsafe { wh_command(std::ptr::null(), c"{}".as_ptr()) });
     assert_eq!(response, json!({ "ok": false, "error": "核心没有启动" }));
 
-    let mut core = 1 as *mut WhCore;
+    // Not NULL, to see that a failed start clears it.
+    let mut core = std::ptr::dangling_mut::<WhCore>();
     let response = take(unsafe { wh_start(c"{not json".as_ptr(), None, std::ptr::null_mut(), &mut core) });
     assert_eq!(response["ok"], false);
     assert!(response["error"].as_str().unwrap().starts_with("配置不是有效的 JSON"));

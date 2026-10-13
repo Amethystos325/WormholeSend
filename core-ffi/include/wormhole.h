@@ -50,6 +50,12 @@ const char *wh_version(void);
  * Returns `{"ok":true,"result":<settings.get>}` and sets `*core_out`, or
  * `{"ok":false,"error":"…"}` and sets `*core_out` to NULL. Free the string
  * with `wh_free_string`.
+ *
+ * # Safety
+ *
+ * `config_json` is NULL or a NUL-terminated string. `core_out` is NULL or
+ * points to writable storage for a pointer. `on_event` and `ctx` stay
+ * valid until `wh_stop` returns.
  */
 char *wh_start(const char *config_json,
                WhEventCallback on_event,
@@ -69,17 +75,32 @@ char *wh_start(const char *config_json,
  * `device.unpair` (deviceId), `device.setDefault` (deviceId),
  * `settings.get`, `settings.set` (alias?, saveDir?). core-ffi/README.md
  * describes their results.
+ *
+ * # Safety
+ *
+ * `core` is NULL or a core from `wh_start` that `wh_stop` has not freed.
+ * `command_json` is NULL or a NUL-terminated string.
  */
 char *wh_command(const struct WhCore *core, const char *command_json);
 
 /**
  * Frees a string returned by `wh_start` or `wh_command`. NULL is ignored.
+ *
+ * # Safety
+ *
+ * `string` is NULL or a string from `wh_start` or `wh_command`, freed only
+ * once.
  */
 void wh_free_string(char *string);
 
 /**
  * Stops the core and frees it. Waits for an event callback in progress;
  * no events arrive after it returns. NULL is ignored.
+ *
+ * # Safety
+ *
+ * `core` is NULL or a core from `wh_start`, stopped only once and not used
+ * afterwards. Not to be called from the event callback.
  */
 void wh_stop(struct WhCore *core);
 
