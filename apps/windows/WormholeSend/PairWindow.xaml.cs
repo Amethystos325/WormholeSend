@@ -21,6 +21,7 @@ public partial class PairWindow : FluentWindow
     {
         this.session = session;
         InitializeComponent();
+        AppIcon.Show(Bar, this);
         SystemThemeWatcher.Watch(this);
         session.PairingEvent += OnPairing;
         search.Tick += (_, _) => Search();

@@ -11,6 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>WormholeSend</AssemblyName>
     <Product>Wormhole Send</Product>
+    <!-- assets/app-icon.ico, also in the title bars (AppIcon.cs). -->
+    <ApplicationIcon>..\..\..\assets\app-icon.ico</ApplicationIcon>
     <!-- For the source-generated P/Invoke in Native.cs and Core.cs. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- WinForms would rather set DPI awareness in code, but this is a WPF
@@ -31,6 +33,10 @@
 
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\..\assets\app-icon.ico" Link="app-icon.ico" />
   </ItemGroup>
 
   <!-- The Rust core (core-ffi) is built with cargo and copied next to the

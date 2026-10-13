@@ -26,6 +26,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | `Core.cs`, `CoreEvents.cs`, `Transfers.cs` | P/Invoke to `wormhole.dll`, typed events, real and simulated transfers |
 | `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
 | `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
+| `AppIcon.cs` | The app icon (`assets/app-icon.ico`, made on the Mac from `app-icon.svg`) in the title bars; also the exe's icon |
 | `SettingsWindow`, `PairWindow`, `WelcomeWindow` | Settings (7.1), pairing with the 6-digit code (3.1), first-run guide (7.3) |
 
 ## How it differs from macOS
@@ -62,7 +63,7 @@ Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest
 
 ## Not done yet
 
-- Installer: MSIX or Inno Setup is still open (design doc 9). It should add firewall rules for TCP 53320, TCP 53321 and UDP 53320, and be code-signed against SmartScreen.
+- Installer, with Inno Setup (design doc 9). It should add firewall rules for TCP 53320, TCP 53321 and UDP 53320, use `assets/app-icon.ico`, and be code-signed against SmartScreen.
 - The private key is in `identity.pem`, not yet protected with DPAPI (design doc 3.3).
 - A hint "正在发送" when dragging in during a send (2.1); for now such a drag is ignored.
 

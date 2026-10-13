@@ -12,7 +12,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <ui:TitleBar Title="配对新设备" ShowMaximize="False" ShowMinimize="False" />
+        <ui:TitleBar x:Name="Bar" Title="配对新设备" ShowMaximize="False" ShowMinimize="False" />
 
         <!-- 1. Nearby devices -->
         <DockPanel x:Name="SearchPanel" Grid.Row="1" Margin="24,8,24,24">

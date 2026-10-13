@@ -13,7 +13,7 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <ui:TitleBar Title="Wormhole Send" ShowMaximize="False" ShowMinimize="False" />
+        <ui:TitleBar x:Name="Bar" Title="Wormhole Send" ShowMaximize="False" ShowMinimize="False" />
 
         <!-- 1. Name -->
         <StackPanel x:Name="NamePage" Grid.Row="1" Margin="32,16,32,0">

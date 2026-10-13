@@ -20,6 +20,7 @@ public partial class WelcomeWindow : FluentWindow
         this.session = session;
         this.start = start;
         InitializeComponent();
+        AppIcon.Show(Bar, this);
         SystemThemeWatcher.Watch(this);
         AliasBox.Text = System.Net.Dns.GetHostName();
         session.DevicesChanged += ShowPaired;

@@ -20,6 +20,7 @@ public partial class SettingsWindow : FluentWindow
     {
         this.session = session;
         InitializeComponent();
+        AppIcon.Show(Bar, this);
         SystemThemeWatcher.Watch(this);
         session.DevicesChanged += Refresh;
         session.SettingsChanged += LoadSettings;
