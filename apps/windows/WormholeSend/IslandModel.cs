@@ -288,7 +288,7 @@ sealed class IslandModel : INotifyPropertyChanged
             if (devices.Count == 1 && !Available(devices[0]) && localSend.Count == 0) return L.T($"{devices[0].Name} 离线，无法发送", $"{devices[0].Name} is offline", $"{devices[0].Name} はオフラインです");
             if (DefaultDevice is { } device && Available(device))
                 return L.T($"移到这里发送到 {device.Name}", $"Move here to send to {device.Name}", $"ここに移動して {device.Name} に送信");
-            return L.T("默认设备离线，移到这里选其他设备", "Default device offline. Move here to choose another", "既定のデバイスはオフラインです。ここで別のデバイスを選択");
+            return L.T("默认设备离线，移到这里选其他设备", "Default device offline. Move here to choose another", "既定のデバイスはオフラインです。ここに移動して別のデバイスを選択");
         }
     }
 
