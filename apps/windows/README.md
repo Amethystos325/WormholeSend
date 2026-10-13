@@ -24,7 +24,8 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | `IslandView.cs`, `IslandContent.cs`, `Parts.cs` | The island and each phase's content, with the spring morphing |
 | `IslandWindow.cs`, `Screens.cs`, `DragWatch.cs` | One transparent topmost window per screen, the sensor, DPI, full-screen hiding |
 | `Core.cs`, `CoreEvents.cs`, `Transfers.cs` | P/Invoke to `wormhole.dll`, typed events, real and simulated transfers |
-| `AppController.cs`, `TrayIcon.cs` | Wiring: screens, core, tray menu (design doc 7.2), windows |
+| `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
+| `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
 | `SettingsWindow`, `PairWindow`, `WelcomeWindow` | Settings (7.1), pairing with the 6-digit code (3.1), first-run guide (7.3) |
 
 ## How it differs from macOS
@@ -44,6 +45,7 @@ WormholeSend.exe [--home DIR] [--port N] [--log]     # a second device on one PC
 WormholeSend.exe --fake [--log]                       # simulated devices and transfers, switched from the tray menu
 WormholeSend.exe --demo picker [--screen external|N] [--devices 1] [--snapshot out.png]
 WormholeSend.exe --selftest --log                     # drags through OLE, without the mouse
+WormholeSend.exe --fake --menu [--snapshot out.png]   # the tray menu with a submenu open, at the screen center
 ```
 
 `--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `pair-request` `notice`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.

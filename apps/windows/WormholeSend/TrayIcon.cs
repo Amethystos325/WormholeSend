@@ -4,32 +4,26 @@ using Forms = System.Windows.Forms;
 
 namespace WormholeSend;
 
-/// The tray icon. The menu is built by the owner each time it opens. While
-/// a send waits in the receiver's queue the icon carries an orange dot
-/// (design doc 2.1).
+/// The tray icon. Its menu (TrayMenu) is built by the owner each time it
+/// opens, so the check marks are current. While a send waits in the
+/// receiver's queue the icon carries an orange dot (design doc 2.1).
 sealed class TrayIcon : IDisposable
 {
     readonly Forms.NotifyIcon icon;
-    readonly Forms.ContextMenuStrip menu = new();
     readonly System.Windows.Threading.Dispatcher ui = System.Windows.Threading.Dispatcher.CurrentDispatcher;
     bool waiting;
 
-    public TrayIcon(Action<Forms.ToolStripItemCollection> buildMenu, Action? open)
+    public TrayIcon(Func<IReadOnlyList<MenuEntry>> buildMenu, Action? open)
     {
-        buildMenu(menu.Items);
-        // Rebuilt on every open so the check marks are current.
-        menu.Opening += (_, e) =>
-        {
-            menu.Items.Clear();
-            buildMenu(menu.Items);
-            e.Cancel = false;
-        };
         icon = new Forms.NotifyIcon
         {
             Text = "Wormhole Send",
-            ContextMenuStrip = menu,
             Icon = Draw(badge: false),
             Visible = true,
+        };
+        icon.MouseUp += (_, e) =>
+        {
+            if (e.Button == Forms.MouseButtons.Right) TrayMenu.Show(buildMenu());
         };
         if (open is not null) icon.MouseDoubleClick += (_, _) => open();
         // Light or dark taskbar: redraw in its text color.
@@ -82,16 +76,5 @@ sealed class TrayIcon : IDisposable
         SystemEvents.UserPreferenceChanged -= Redraw;
         icon.Visible = false;
         icon.Dispose();
-        menu.Dispose();
     }
-}
-
-static class Menu
-{
-    public static Forms.ToolStripMenuItem Item(string text, Action action, bool enabled = true, bool check = false) =>
-        new(text, null, (_, _) => action()) { Enabled = enabled, Checked = check };
-
-    public static Forms.ToolStripMenuItem Title(string text) => new(text) { Enabled = false };
-
-    public static Forms.ToolStripSeparator Separator() => new();
 }

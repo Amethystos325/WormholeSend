@@ -93,6 +93,15 @@ static class Glyphs
     public const string CloseFilled = "";     // xmark.circle.fill
     public const string Document = "";        // doc.fill
     public const string Folder = "";          // folder.fill
+
+    // The tray menu, after the macOS menu's symbols.
+    public const string Star = "";            // star
+    public const string Link = "";            // link.badge.plus
+    public const string FolderOpen = "";      // folder
+    public const string Settings = "";        // gearshape
+    public const string Power = "";           // power
+    public const string Devices = "";
+    public const string Send = "";
 }
 
 static class Fonts

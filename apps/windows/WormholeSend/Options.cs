@@ -10,6 +10,7 @@ namespace WormholeSend;
 ///     WormholeSend --fake [--log]
 ///     WormholeSend --demo picker [--screen external|N] [--devices 1] [--log] [--snapshot out.png]
 ///     WormholeSend --selftest --log
+///     WormholeSend --fake --menu [--snapshot out.png]
 ///
 /// `--home` and `--port` run a second device on the same PC, as with `whs`.
 /// `--fake` uses simulated devices and transfers, switched from the tray
@@ -18,10 +19,11 @@ namespace WormholeSend;
 /// queued, queued-compact, done, failed, refused, receiving, received,
 /// pair-request, notice. `--snapshot` captures the island's window from the
 /// screen once the animation settled, then quits. `--selftest` runs the
-/// drag checks in SelfTest.cs and exits with their result.
+/// drag checks in SelfTest.cs and exits with their result. `--menu` opens
+/// the tray menu with a submenu at the screen center, for a look.
 sealed record Options(
     string? Demo, string? Screen, int? Devices, bool Log, string? Snapshot, bool SelfTest,
-    bool FakeData, string? Home, int? Port)
+    bool FakeData, string? Home, int? Port, bool Menu)
 {
     /// Simulated devices and transfers instead of the core.
     public bool Fake => FakeData || Demo is not null || SelfTest;
@@ -42,7 +44,8 @@ sealed record Options(
             args.Contains("--selftest"),
             args.Contains("--fake"),
             Value("--home") is { } home ? Path.GetFullPath(home) : null,
-            int.TryParse(Value("--port"), out var port) ? port : null);
+            int.TryParse(Value("--port"), out var port) ? port : null,
+            args.Contains("--menu"));
     }
 }
 

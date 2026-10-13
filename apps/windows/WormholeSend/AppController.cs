@@ -6,7 +6,6 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Drawing = System.Drawing;
-using Forms = System.Windows.Forms;
 
 namespace WormholeSend;
 
@@ -76,6 +75,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
             tray = new TrayIcon(BuildFakeMenu, null);
             Demo.Apply(options, model, this);
             if (options.SelfTest) _ = RunSelfTest();
+            if (options.Menu) ShowMenuForCheck(options.Snapshot);
             return;
         }
         model.Devices = [];
@@ -274,50 +274,45 @@ sealed class AppController(Options options) : IDragTarget, ISession
     }
 
     /// Design doc 7.2.
-    void BuildMenu(Forms.ToolStripItemCollection items)
-    {
-        var defaults = new Forms.ToolStripMenuItem("默认设备");
-        foreach (var device in model.Devices)
-        {
-            var item = Menu.Item(device.Name, () => SetDefault(device), check: device.IsDefault);
-            if (!device.Online) item.ForeColor = Drawing.SystemColors.GrayText;
-            defaults.DropDownItems.Add(item);
-        }
-        if (model.Devices.Count == 0) defaults.DropDownItems.Add(Menu.Title("还没有配对设备"));
-        items.Add(defaults);
-        items.Add(Menu.Item("配对新设备…", OpenPairing, enabled: core is not null));
-        items.Add(Menu.Item("打开接收文件夹", OpenSaveDir, enabled: settings is not null));
-        items.Add(Menu.Item("设置…", OpenSettings));
-        items.Add(Menu.Separator());
-        items.Add(Menu.Item("退出", Quit));
-    }
+    IReadOnlyList<MenuEntry> BuildMenu() =>
+    [
+        new("默认设备", Glyphs.Star, Submenu: () => model.Devices.Count == 0
+            ? [new MenuEntry("还没有配对设备", Enabled: false)]
+            : model.Devices.Select(device => new MenuEntry(
+                device.Name, device.Glyph, () => SetDefault(device), Checked: device.IsDefault, Dimmed: !device.Online)).ToList()),
+        new("配对新设备…", Glyphs.Link, OpenPairing, Enabled: core is not null),
+        new("打开接收文件夹", Glyphs.FolderOpen, OpenSaveDir, Enabled: settings is not null),
+        new("设置…", Glyphs.Settings, OpenSettings),
+        MenuEntry.Separator,
+        new("退出", Glyphs.Power, Quit),
+    ];
 
     /// Switches for the simulated devices and transfers (`--fake`).
-    void BuildFakeMenu(Forms.ToolStripItemCollection items)
-    {
-        items.Add(Menu.Title("Wormhole Send · 假数据"));
-        items.Add(Menu.Separator());
-        var devices = new Forms.ToolStripMenuItem("配对设备");
-        foreach (var count in new[] { 0, 1, 3 })
-            devices.DropDownItems.Add(Menu.Item($"{count} 台", () => model.Devices = Device.Samples.Take(count).ToList(), check: model.Devices.Count == count));
-        items.Add(devices);
-        items.Add(Menu.Item("默认设备离线",
+    IReadOnlyList<MenuEntry> BuildFakeMenu() =>
+    [
+        new("Wormhole Send · 假数据", Enabled: false),
+        MenuEntry.Separator,
+        new("配对设备", Glyphs.Devices, Submenu: () => new[] { 0, 1, 3 }
+            .Select(count => new MenuEntry($"{count} 台", Action: () => model.Devices = Device.Samples.Take(count).ToList(),
+                Checked: model.Devices.Count == count))
+            .ToList()),
+        new("默认设备离线", Glyphs.NoNetwork,
             () => model.Devices = model.Devices.Select(d => d.IsDefault ? d with { Online = !d.Online } : d).ToList(),
-            enabled: model.DefaultDevice is not null, check: model.DefaultDevice?.Online == false));
-        var outcomes = new Forms.ToolStripMenuItem("发送结果");
-        foreach (var outcome in Enum.GetValues<FakeTransfers.Outcome>())
-            outcomes.DropDownItems.Add(Menu.Item(FakeTransfers.Title(outcome), () => model.Fake.NextOutcome = outcome, check: model.Fake.NextOutcome == outcome));
-        items.Add(outcomes);
-        items.Add(Menu.Separator());
-        items.Add(Menu.Item("模拟接收文件", () =>
+            Enabled: model.DefaultDevice is not null, Checked: model.DefaultDevice?.Online == false),
+        new("发送结果", Glyphs.Send, Submenu: () => Enum.GetValues<FakeTransfers.Outcome>()
+            .Select(outcome => new MenuEntry(FakeTransfers.Title(outcome), Action: () => model.Fake.NextOutcome = outcome,
+                Checked: model.Fake.NextOutcome == outcome))
+            .ToList()),
+        MenuEntry.Separator,
+        new("模拟接收文件", Glyphs.Document, () =>
         {
             Activate(Home);
             model.Fake.Receive(model.Devices.FirstOrDefault(d => d.Id == "air") ?? Device.Samples[1]);
-        }));
-        items.Add(Menu.Item("模拟配对请求", () => model.ShowPairRequest("fake", "MacBook Air", "482019")));
-        items.Add(Menu.Separator());
-        items.Add(Menu.Item("退出", Quit));
-    }
+        }),
+        new("模拟配对请求", Glyphs.Link, () => model.ShowPairRequest("fake", "MacBook Air", "482019")),
+        MenuEntry.Separator,
+        new("退出", Glyphs.Power, Quit),
+    ];
 
     void SetDefault(Device device)
     {
@@ -446,6 +441,35 @@ sealed class AppController(Options options) : IDragTarget, ISession
     }
 
     // MARK: - Checks
+
+    /// `--menu`: the tray menu at the screen center with its first submenu
+    /// open, for a look (and `--snapshot`) without clicking the tray.
+    public void ShowMenuForCheck(string? snapshot)
+    {
+        var area = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
+        var menu = TrayMenu.Show(options.Fake ? BuildFakeMenu() : BuildMenu(),
+            new Drawing.Point(area.Left + area.Width / 2, area.Top + area.Height * 2 / 3));
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        var step = 0;
+        timer.Tick += (_, _) =>
+        {
+            if (step++ == 0)
+            {
+                menu.OpenFirstSubmenu();
+                return;
+            }
+            timer.Stop();
+            if (snapshot is null) return;
+            var bounds = menu.Bounds;
+            bounds.Inflate(24, 24);
+            using var bitmap = new Drawing.Bitmap(bounds.Width, bounds.Height);
+            using (var g = Drawing.Graphics.FromImage(bitmap))
+                g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bitmap.Size);
+            bitmap.Save(snapshot, Drawing.Imaging.ImageFormat.Png);
+            Quit();
+        };
+        timer.Start();
+    }
 
     /// Saves what the active window shows on screen, then quits.
     public void Snapshot(string path)

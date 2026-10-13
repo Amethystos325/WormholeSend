@@ -105,6 +105,14 @@ static partial class Native
     [LibraryImport("user32.dll")]
     public static partial IntPtr WindowFromPoint(POINT point);
 
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetCursorPos(out POINT point);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(IntPtr hwnd);
+
     public const uint GA_ROOT = 2;
 
     [LibraryImport("user32.dll")]
