@@ -514,7 +514,7 @@ async fn pair(mut out: Printer, home: PathBuf, settings: Settings, target: Strin
     tokio::time::sleep(deadline.saturating_duration_since(Instant::now())).await;
     let devices = node.devices();
     let started = match trust::resolve_device(&devices, &target, |d| (&d.alias, &d.fingerprint)) {
-        Ok(device) => node.pair(&device.fingerprint).await,
+        Ok(device) => node.pair(&device.fingerprint),
         Err(err) => Err(anyhow::anyhow!("{err}（用 whs devices 查看附近设备）")),
     };
     let pair_id = match started {

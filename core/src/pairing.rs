@@ -63,9 +63,10 @@ struct Pair {
 
 // MARK: - Initiator
 
-/// Starts pairing with a discovered device. Returns the pairing ID once both
-/// sides show the code (reported as `pair.code`).
-pub(crate) async fn start(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Result<String> {
+/// Starts pairing with a discovered device and returns the pairing ID right
+/// away. The code follows as `pair.code` once both sides have it; a failure
+/// on the way is reported as `pair.result` with `ok: false`.
+pub(crate) fn start(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Result<String> {
     let peer = normalize_fingerprint(fingerprint);
     if peer == inner.identity.fingerprint {
         bail!("不能和本机自己配对");
@@ -104,24 +105,27 @@ pub(crate) async fn start(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Resu
         }
         state.pairs.insert(id.clone(), pair.clone());
     }
-    let result = exchange(inner, &pair, addr).await;
-    let code = match result {
-        Ok(code) => code,
-        Err(err) => {
-            inner.pairings.state.lock().unwrap().pairs.remove(&id);
-            return Err(err);
+    let inner = inner.clone();
+    tokio::spawn(async move {
+        let code = match exchange(&inner, &pair, addr).await {
+            Ok(code) => code,
+            Err(err) => {
+                inner.pairings.state.lock().unwrap().pairs.remove(&pair.id);
+                inner.emit(result(&pair, false, Some(&format!("{err:#}"))));
+                return;
+            }
+        };
+        if let Some(pair) = inner.pairings.state.lock().unwrap().pairs.get_mut(&pair.id) {
+            pair.code = Some(code.clone());
         }
-    };
-    if let Some(pair) = inner.pairings.state.lock().unwrap().pairs.get_mut(&id) {
-        pair.code = Some(code.clone());
-    }
-    inner.emit(CoreEvent::PairCode {
-        pair_id: id.clone(),
-        device_id: peer,
-        alias: pair.alias.clone(),
-        code,
+        inner.emit(CoreEvent::PairCode {
+            pair_id: pair.id.clone(),
+            device_id: pair.peer.clone(),
+            alias: pair.alias.clone(),
+            code,
+        });
+        expire_later(&inner, &pair.id);
     });
-    expire_later(inner, &id);
     Ok(id)
 }
 
@@ -389,18 +393,20 @@ pub(crate) fn code(initiator: &str, responder: &str, initiator_nonce: &[u8], res
 
 // MARK: - Unpairing
 
-/// Removes a paired device and tells it. Returns `None` when it was not
-/// paired, `Some(false)` when it could not be told now (it is told when it
-/// is seen again).
-pub(crate) async fn unpair(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Result<Option<bool>> {
+/// Removes a paired device here. Returns it, or `None` when it was not
+/// paired; tell it with [`notify_removed`].
+pub(crate) fn remove(inner: &Inner, fingerprint: &str) -> anyhow::Result<Option<TrustedDevice>> {
     let fingerprint = normalize_fingerprint(fingerprint);
-    let removed = TrustStore::update(&inner.home, |store| {
+    TrustStore::update(&inner.home, |store| {
         let removed = store.remove(&fingerprint);
         (removed.is_some(), removed)
-    })?;
-    let Some(device) = removed else {
-        return Ok(None);
-    };
+    })
+}
+
+/// Tells a removed device it was unpaired. Returns `false` when it could
+/// not be told now; it is told when it is seen again.
+pub(crate) async fn notify_removed(inner: &Arc<Inner>, device: TrustedDevice) -> anyhow::Result<bool> {
+    let fingerprint = device.fingerprint;
     let seen = inner
         .discovery
         .device_by_fingerprint(&fingerprint)
@@ -413,7 +419,7 @@ pub(crate) async fn unpair(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Res
     if !notified {
         add_pending(&inner.home, &fingerprint)?;
     }
-    Ok(Some(notified))
+    Ok(notified)
 }
 
 /// The other device unpaired this one.

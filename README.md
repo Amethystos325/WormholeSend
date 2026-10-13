@@ -7,6 +7,7 @@
 | 目录 | 内容 |
 | --- | --- |
 | `core/` | Rust 核心 `wormhole-core`：身份、信任库、发现、收发、控制服务（配对、解除配对、接收排队），基于 LocalSend 的 `localsend` crate |
+| `core-ffi/` | 核心的 C 接口（`wormhole.dll` / `libwormhole.a` + `include/wormhole.h`），供两端原生界面调用，见 [core-ffi/README.md](core-ffi/README.md) |
 | `cli/` | 命令行 `whs`，用来在原生界面之前验证核心 |
 | `apps/macos/` | macOS 刘海面板验证原型（假数据） |
 | `apps/windows/` | Windows 顶部岛验证原型（WPF，假数据） |
@@ -50,7 +51,7 @@
 
 ## 与设计相比还没做的
 
-- 两端原生界面还没接入核心：还缺 C 接口层（`core-ffi`），刘海面板和顶部岛目前用假数据。
+- 两端原生界面还没接入核心（C 接口 `core-ffi` 已就绪），刘海面板和顶部岛目前用假数据。
 - 设置窗口、首次引导、开机启动、安装包（Windows 安装包要放行 TCP 53320、TCP 53321 和 UDP 53320）。
 
 ## 致谢

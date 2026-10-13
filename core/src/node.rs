@@ -281,10 +281,20 @@ impl Node {
         transfer_id
     }
 
-    /// Starts pairing with a discovered device. Returns the pairing ID once
-    /// the code is shown (`pair.code`); the result arrives as `pair.result`.
-    pub async fn pair(&self, fingerprint: &str) -> anyhow::Result<String> {
-        pairing::start(&self.inner, fingerprint).await
+    /// Like [`Node::refresh`], without waiting: answers arrive as
+    /// `device.updated` events.
+    pub fn refresh_in_background(&self) {
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            tokio::join!(inner.discovery.announce(), inner.probe_paired());
+        });
+    }
+
+    /// Starts pairing with a discovered device and returns the pairing ID
+    /// right away. The code follows as `pair.code`, the outcome as
+    /// `pair.result` (also when the exchange fails before there is a code).
+    pub fn pair(&self, fingerprint: &str) -> anyhow::Result<String> {
+        pairing::start(&self.inner, fingerprint)
     }
 
     /// This side's user compared the codes and accepts or declines.
@@ -295,7 +305,33 @@ impl Node {
     /// Unpairs a device and tells it. `None`: it was not paired;
     /// `Some(false)`: it is told when it is seen again.
     pub async fn unpair(&self, fingerprint: &str) -> anyhow::Result<Option<bool>> {
-        pairing::unpair(&self.inner, fingerprint).await
+        match pairing::remove(&self.inner, fingerprint)? {
+            Some(device) => Ok(Some(pairing::notify_removed(&self.inner, device).await?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Unpairs a device here and tells it in the background (or when it is
+    /// seen again). Returns whether it was paired.
+    pub fn unpair_in_background(&self, fingerprint: &str) -> anyhow::Result<bool> {
+        let Some(device) = pairing::remove(&self.inner, fingerprint)? else {
+            return Ok(false);
+        };
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            if let Err(err) = pairing::notify_removed(&inner, device).await {
+                inner.emit(CoreEvent::Error { message: format!("{err:#}") });
+            }
+        });
+        Ok(true)
+    }
+
+    /// Makes a paired device the default one. Returns whether it is paired.
+    pub fn set_default(&self, fingerprint: &str) -> anyhow::Result<bool> {
+        TrustStore::update(&self.inner.home, |store| {
+            let found = store.set_default(fingerprint);
+            (found, found)
+        })
     }
 
     /// Cancels an outgoing transfer. Returns whether it was still running.
