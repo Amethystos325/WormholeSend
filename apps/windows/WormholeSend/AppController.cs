@@ -34,6 +34,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
 {
     readonly IslandModel model = new();
     readonly DragWatch dragWatch = new();
+    readonly DragMonitor dragMonitor = new();
     readonly DispatcherTimer guard = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer returnHome = new() { Interval = TimeSpan.FromMilliseconds(700) };
     /// Pairings other devices started; their codes show on the island.
@@ -69,6 +70,17 @@ sealed class AppController(Options options) : IDragTarget, ISession
             returnHome.Stop();
             if (model.Phase is Phase.Idle && windows.Count > 0) Activate(Home);
         };
+        // Not while `--demo` holds a phase or `--selftest` runs its drags.
+        if (options.Demo is null && !options.SelfTest)
+        {
+            dragMonitor.Started += DragStartedElsewhere;
+            dragMonitor.Moved += () =>
+            {
+                if (model.Phase is Phase.Hint) FollowCursor();
+            };
+            dragMonitor.Ended += DragEndedElsewhere;
+            dragMonitor.Start();
+        }
 
         if (options.Fake)
         {
@@ -405,19 +417,54 @@ sealed class AppController(Options options) : IDragTarget, ISession
         if (phase is Phase.Idle) returnHome.Start();
     }
 
+    // MARK: - Drags anywhere
+
+    /// A drag started anywhere: the hint shows on the screen under the
+    /// cursor, as the notch opens on macOS, and moves with it between screens.
+    void DragStartedElsewhere()
+    {
+        if (model.IsBusy || model.Phase.IsOverIsland) return;
+        Log.Write("drag started elsewhere");
+        FollowCursor();
+        model.DragStarted();
+    }
+
+    void FollowCursor()
+    {
+        if (!Native.GetCursorPos(out var point)) return;
+        var window = windows.FirstOrDefault(w =>
+        {
+            var b = w.Screen.Bounds;
+            return point.X >= b.X && point.X < b.X + b.Width && point.Y >= b.Y && point.Y < b.Y + b.Height;
+        });
+        if (window is not null && window != active) Activate(window);
+    }
+
+    void DragEndedElsewhere()
+    {
+        Log.Write("drag ended");
+        dragWatch.Stop();
+        model.DragEnded();
+    }
+
     // MARK: - Drags from the windows
 
     public void DragOver(IslandWindow window, DragEventArgs e)
     {
         e.Handled = true;
         e.Effects = DragDropEffects.None;
-        if (FileChip.DraggingOut || e.Data.GetData(DataFormats.FileDrop) is not string[] files) return;
+        if (FileChip.DraggingOut) return;
+        var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+        // Anything but files (text, a link) only gets an answer when the
+        // hint already shows for it.
+        if (files is null && !model.Phase.AcceptsDrag) return;
         dragWatch.Stop();
         // A transfer in progress keeps its screen and ignores drags.
         if (model.IsBusy) return;
         if (window != active) Activate(window);
         // A new drag, possibly over a result still showing (as on macOS).
         if (!model.Phase.AcceptsDrag) model.DragStarted(files);
+        model.DragCarries(files);
         model.DragMoved(e.GetPosition(window), Spec.PanelSize.Width);
         if (model.CanDrop) e.Effects = DragDropEffects.Copy;
     }

@@ -28,6 +28,50 @@ public class IslandModelTests
         Assert.Equal("季度报告.pdf", model.DragLabel);
     }
 
+    /// A drag seen from outside (DragMonitor): the hint shows before the
+    /// drag reaches a window, which then tells what it carries.
+    [Fact]
+    public void ADragElsewhereShowsTheHintThenTheTarget()
+    {
+        var model = new IslandModel { Transfers = new RecordingTransfers() };
+        model.DragStarted();
+        Assert.Equal(new Phase.Hint(), model.Phase);
+        Assert.Equal("", model.DragLabel);
+        model.DragCarries(Files);
+        model.DragMoved(Sensor, PanelWidth);
+        Assert.Equal(new Phase.Target(), model.Phase);
+        Assert.Equal("季度报告.pdf", model.DragLabel);
+        Assert.True(model.Drop([]));
+        Assert.Equal(Files, model.Transfer?.Files);
+    }
+
+    [Fact]
+    public void ADragOfSomethingElseSaysOnlyFilesCanBeSent()
+    {
+        var model = new IslandModel();
+        model.DragStarted();
+        model.DragCarries(null);
+        model.DragMoved(Sensor, PanelWidth);
+        Assert.Equal(new Phase.Unavailable("只能发送文件"), model.Phase);
+        Assert.False(model.CanDrop);
+        model.DragMoved(new Point(280, 240), PanelWidth);
+        Assert.Equal(new Phase.Hint(), model.Phase);
+        model.DragEnded();
+        Assert.Equal(new Phase.Idle(), model.Phase);
+        // The next drag starts afresh.
+        Entered(model);
+        Assert.Equal(new Phase.Target(), model.Phase);
+    }
+
+    [Fact]
+    public void ADragElsewhereLeavesASendAlone()
+    {
+        var model = Entered();
+        model.Drop(Files);
+        model.DragStarted();
+        Assert.Equal(new Phase.Sending(), model.Phase);
+    }
+
     [Fact]
     public void DraggingDownIntoTheStripOpensTheDeviceList()
     {

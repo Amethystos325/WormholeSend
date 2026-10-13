@@ -56,6 +56,34 @@ static partial class Native
     public static partial IntPtr GetForegroundWindow();
 
     [LibraryImport("user32.dll")]
+    public static partial uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    public static readonly IntPtr HWND_MESSAGE = new(-3);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? className, string? title);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUITHREADINFO
+    {
+        public int Size;
+        public uint Flags;
+        public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        public RECT CaretRect;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetGUIThreadInfo(uint thread, ref GUITHREADINFO info);
+
+    /// The window that has the mouse captured on `thread`, if any.
+    public static IntPtr CaptureOf(uint thread)
+    {
+        var info = new GUITHREADINFO { Size = Marshal.SizeOf<GUITHREADINFO>() };
+        return GetGUIThreadInfo(thread, ref info) ? info.Capture : IntPtr.Zero;
+    }
+
+    [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetWindowRect(IntPtr hwnd, out RECT rect);
 

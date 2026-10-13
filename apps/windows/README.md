@@ -22,7 +22,8 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | --- | --- |
 | `IslandModel.cs`, `Phase.cs` | The state machine: drags from the windows, core events, pairing requests |
 | `IslandView.cs`, `IslandContent.cs`, `Parts.cs` | The island and each phase's content, with the spring morphing |
-| `IslandWindow.cs`, `Screens.cs`, `DragWatch.cs` | One transparent topmost window per screen, the sensor, DPI, full-screen hiding |
+| `IslandWindow.cs`, `Screens.cs` | One transparent topmost window per screen, the sensor, DPI, full-screen hiding |
+| `DragMonitor.cs`, `DragWatch.cs` | Drags anywhere on screen, for the hint; the end of a drag that left the island |
 | `Core.cs`, `CoreEvents.cs`, `Transfers.cs` | P/Invoke to `wormhole.dll`, typed events, real and simulated transfers |
 | `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
 | `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
@@ -31,7 +32,8 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 
 ## How it differs from macOS
 
-- Windows has no global drag events without hooks, so the island doesn't show when a drag starts. Each screen has a 240 × 6 sensor at the top center; dragging a file into it opens the island on that screen.
+- Windows has no global drag events without hooks. While a mouse button is held the app looks for ole32's drag window, which has the mouse captured during a drag (`DragMonitor.cs`), and shows the hint on the screen under the cursor, following it between screens. What a drag carries is only known once it reaches the island, so text and links show the hint too; over the island they get "只能发送文件".
+- Drags that don't go through DoDragDrop aren't noticed until they reach the 240 × 6 sensor at the top center of each screen, which opens the island there.
 - The sensor and the drop halo are painted at alpha 1/255: layered windows only take drags and clicks on pixels that are not fully transparent. The sensor therefore also takes clicks in its 240 × 6 area.
 - After a drag leaves the island the hint stays until the mouse button is released, which the app learns by polling the buttons (no drag events reach it then).
 - Full-screen apps hide the windows on their screen: what the shell reports as full screen (QUNS_BUSY, D3D, presentation mode) or a window without a title bar covering the monitor. Ordinary maximized windows don't.
@@ -59,7 +61,7 @@ dotnet test       # the state machine, core events, and two real cores pairing a
 
 `--selftest` calls the window's registered drop target the way `DoDragDrop` does and checks with `WindowFromPoint` which pixels take the pointer; it exits with 0 when all checks pass.
 
-Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest`; real mouse drags from another process (drop via the device list, out and back, drop on an offline device); hiding under borderless full-screen and borderless maximized windows but not under ordinary maximized ones; and, against `whs` through UI Automation, an incoming pairing answered on the island, receiving a folder, the unpair notice, and pairing from the pairing window. Not yet checked: a second monitor, 150 % scaling, monitors with different scaling, and a Mac on the other end.
+Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest`; the hint on drags from Explorer and the desktop; real mouse drags from another process (drop via the device list, out and back, drop on an offline device); hiding under borderless full-screen and borderless maximized windows but not under ordinary maximized ones; and, against `whs` through UI Automation, an incoming pairing answered on the island, receiving a folder, the unpair notice, and pairing from the pairing window. Not yet checked: a second monitor, 150 % scaling, monitors with different scaling, and a Mac on the other end.
 
 ## Not done yet
 
@@ -72,7 +74,9 @@ Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest
 - [ ] First run: the guide asks for the name, explains the firewall prompt, then offers pairing; "开机时启动" sets the Run key
 - [ ] Pair with another computer from 设置 › 配对新设备: both screens show the same code
 - [ ] Another computer pairs with this one: the island shows the request with the code; 配对 / 拒绝 work
-- [ ] Drag a file from Explorer to the top center of the screen: the island opens with "松手发送到 …"; release: sending → delivered
+- [ ] Start dragging a file in Explorer or on the desktop: the hint shows at the top center at once; Esc, or releasing elsewhere, hides it
+- [ ] Drag selected text from a browser: the hint shows; over the island "只能发送文件"
+- [ ] Drag a file to the top center of the screen: the island opens with "松手发送到 …"; release: sending → delivered
 - [ ] After the island opens, drag down into the "其他设备" strip: the device list opens; release over another device
 - [ ] Release over an offline device: shows "离线，未发送"
 - [ ] Drag out of the island and keep holding: the hint stays; release elsewhere and it collapses

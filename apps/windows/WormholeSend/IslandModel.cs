@@ -26,6 +26,9 @@ sealed class IslandModel : INotifyPropertyChanged
     string saveDirLabel = @"下载\Wormhole Send";
 
     IReadOnlyList<string> dragFiles = [];
+    /// The drag carries no files (text, a link), as found once it reached a
+    /// window; a drag seen only from outside may carry anything.
+    bool dragNotFiles;
     /// Set once the cursor reached the default device row in the target
     /// state. The cursor usually comes up from below, through where the strip
     /// appears; only a move back down into the strip opens the list.
@@ -100,13 +103,26 @@ sealed class IslandModel : INotifyPropertyChanged
 
     // MARK: - Drag input
 
-    public void DragStarted(IReadOnlyList<string> files)
+    /// A drag began: over a window of this app with `files`, or elsewhere
+    /// (DragMonitor) with nothing known yet of what it carries.
+    public void DragStarted(IReadOnlyList<string>? files = null)
     {
         if (IsBusy) return;
         CancelTimers();
+        dragFiles = files ?? [];
+        dragNotFiles = false;
+        DragLabel = files is null ? "" : FileLabel.Of(files);
+        Phase = new Phase.Hint();
+    }
+
+    /// The drag is over a window of this app, which can tell what it
+    /// carries: `files`, or null for anything else.
+    public void DragCarries(IReadOnlyList<string>? files)
+    {
+        dragNotFiles = files is null;
+        if (files is null || files.SequenceEqual(dragFiles)) return;
         dragFiles = files;
         DragLabel = FileLabel.Of(files);
-        Phase = new Phase.Hint();
     }
 
     /// The cursor moved over the window; `point` is in window coordinates
@@ -152,6 +168,7 @@ sealed class IslandModel : INotifyPropertyChanged
             CancelTimers();
             Phase = new Phase.Idle();
         }
+        dragNotFiles = false;
     }
 
     /// Returns whether the drop was taken.
@@ -187,7 +204,9 @@ sealed class IslandModel : INotifyPropertyChanged
 
     void EnterIsland()
     {
-        if (devices.Count == 0)
+        if (dragNotFiles)
+            Phase = new Phase.Unavailable("只能发送文件");
+        else if (devices.Count == 0)
             Phase = new Phase.Unavailable("还没有配对设备 · 点击配对");
         else if (!OnlineDevices.Any())
             Phase = new Phase.Unavailable(devices.Count == 1 ? $"{devices[0].Name} 离线，无法发送" : "没有在线的设备");
