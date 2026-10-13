@@ -24,5 +24,7 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>用来发现局域网里配对过的电脑，并直接把文件传给它们，不经过任何服务器。</string>
 </dict>
 </plist>

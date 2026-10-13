@@ -34,6 +34,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The pairing whose code dialog is open, so it can be closed when the
     /// pairing ends elsewhere (declined, expired).
     private var openPairing: String?
+    /// Local Network access is denied (`LocalNetwork`): the menu says so.
+    private var networkDenied = false
+    private var menuIsOpen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         place(on: homeScreen)
@@ -59,6 +62,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             model.devices = Device.samples
             Demo.apply(to: model) { [weak self] screen in self?.place(on: screen) }
         } else {
+            welcomeIfNeeded()
             startCore()
         }
     }
@@ -85,6 +89,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 model.reloadDevices()
                 log("core \(Core.version) started")
+                checkLocalNetwork()
             } catch {
                 self?.coreError = "\(error)"
                 self?.log("core failed: \(error)")
@@ -93,7 +98,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handle(_ event: CoreEvent) {
-        log("event \(event.event) \(event.id ?? event.pairId ?? "")")
+        log(describe(event))
         model.handle(event)
         guard let pairId = event.pairId, startedPairs.contains(pairId) else { return }
         switch event.event {
@@ -113,6 +118,72 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         default:
             break
         }
+    }
+
+    private func describe(_ event: CoreEvent) -> String {
+        var parts = ["event", event.event]
+        if let id = event.id ?? event.pairId { parts.append(id) }
+        if let count = event.count { parts.append("count \(count)") }
+        if let position = event.position { parts.append("position \(position)") }
+        if let status = event.status { parts.append(status) }
+        return parts.joined(separator: " ")
+    }
+
+    // MARK: - First launch and Local Network access
+
+    /// Says what the app does and, before the core's first announcement
+    /// makes macOS ask, why it needs Local Network access.
+    private func welcomeIfNeeded() {
+        let key = "welcomed"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        var text = ["把文件拖到屏幕顶部中间，松手就发给配对过的电脑，对方不用确认。"]
+        if LocalNetwork.isAsked {
+            text.append("接下来 macOS 会问是否允许 Wormhole Send 查找本地网络上的设备，请点“允许”。不允许的话，其他电脑找不到这台 Mac，这台 Mac 也发不出文件。")
+        }
+        text.append("之后点菜单栏的 Wormhole Send 图标，选“配对新设备”，和另一台电脑配对一次就好。")
+        let alert = NSAlert()
+        alert.messageText = "欢迎使用 Wormhole Send"
+        alert.informativeText = text.joined(separator: "\n\n")
+        alert.addButton(withTitle: "继续")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    /// Runs at start and whenever the menu opens, so the warning goes away
+    /// once access is allowed. An open menu is rebuilt when the answer changes.
+    private func checkLocalNetwork() {
+        guard LocalNetwork.isAsked else { return }
+        Task { [weak self] in
+            let denied = await LocalNetwork.isDenied()
+            self?.log("local network \(denied ? "denied" : "allowed")")
+            guard let self, denied != self.networkDenied else { return }
+            self.networkDenied = denied
+            self.statusItem?.button?.image = Self.statusImage(warning: denied)
+            if self.menuIsOpen, let menu = self.statusItem?.menu {
+                menu.removeAllItems()
+                self.buildMainMenu(menu)
+            }
+        }
+    }
+
+    private static func statusImage(warning: Bool) -> NSImage? {
+        NSImage(
+            systemSymbolName: warning ? "exclamationmark.triangle" : "dot.radiowaves.up.forward",
+            accessibilityDescription: "Wormhole Send")
+    }
+
+    private func addNetworkWarning(to menu: NSMenu, _ text: String) {
+        let warning = disabledItem(text)
+        warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+        menu.addItem(warning)
+        let open = NSMenuItem(title: "打开“本地网络”设置…", action: #selector(openNetworkSettings), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
+    }
+
+    @objc private func openNetworkSettings() {
+        LocalNetwork.openSettings()
     }
 
     // MARK: - Pairing started from the menu (incoming requests show on the island)
@@ -190,7 +261,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "dot.radiowaves.up.forward", accessibilityDescription: "Wormhole Send")
+        item.button?.image = Self.statusImage(warning: false)
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
@@ -201,9 +272,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         if menu === statusItem?.menu {
             buildMainMenu(menu)
+            checkLocalNetwork()
         } else {
             buildPairingMenu(menu)
         }
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        if menu === statusItem?.menu { menuIsOpen = true }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        if menu === statusItem?.menu { menuIsOpen = false }
     }
 
     private func buildMainMenu(_ menu: NSMenu) {
@@ -211,6 +291,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(disabledItem(name))
         if let coreError {
             menu.addItem(disabledItem("核心没有运行：\(coreError)"))
+        }
+        if networkDenied {
+            addNetworkWarning(to: menu, "没有本地网络权限，其他设备找不到这台 Mac")
         }
         menu.addItem(.separator())
 
@@ -250,7 +333,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func buildPairingMenu(_ menu: NSMenu) {
         guard let core else { return }
         let nearby = (try? core.call("discover.list", as: [DeviceInfo].self).get()) ?? []
-        if nearby.isEmpty {
+        if nearby.isEmpty, networkDenied {
+            addNetworkWarning(to: menu, "没有本地网络权限，搜索不到附近设备")
+        } else if nearby.isEmpty {
             menu.addItem(disabledItem("正在搜索附近设备…（稍后再打开此菜单）"))
         }
         for device in nearby {

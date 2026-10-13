@@ -360,8 +360,16 @@ async fn devices(out: &Printer, home: PathBuf, settings: Settings, wait: u64) ->
             if device.needs_repair { "  （需要重新配对）" } else { "" }
         );
     }
-    if !devices.is_empty() {
-        println!("★ 默认设备  ✓ 已配对");
+    // Explain only the marks that appear.
+    let mut legend = Vec::new();
+    if devices.iter().any(|device| device.is_default) {
+        legend.push("★ 默认设备");
+    }
+    if devices.iter().any(|device| device.paired && !device.is_default) {
+        legend.push("✓ 已配对");
+    }
+    if !legend.is_empty() {
+        println!("{}", legend.join("  "));
     }
     Ok(0)
 }
