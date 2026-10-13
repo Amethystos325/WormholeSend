@@ -1,13 +1,16 @@
 import AppKit
 
-/// Short system sounds at the moments that matter: files delivered or
-/// received, a transfer that failed, a pairing request. Off from the menu.
+/// Short sounds at the moments that matter: files delivered or received, a
+/// transfer that failed, a pairing request. Off from the menu.
+///
+/// The app's own files (assets/sounds, synthesized by make-sounds.py), the
+/// same as the Windows app plays; bundle.sh copies them into Resources.
 @MainActor
 enum Sound: String {
-    case sent = "Glass"
-    case received = "Hero"
-    case failed = "Basso"
-    case pairRequest = "Ping"
+    case sent
+    case received
+    case failed
+    case pairRequest = "pair-request"
 
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
@@ -19,7 +22,10 @@ enum Sound: String {
     private static var playing: NSSound?
 
     func play() {
-        guard Self.enabled, let sound = NSSound(named: rawValue)?.copy() as? NSSound else { return }
+        guard Self.enabled,
+            let url = Bundle.main.url(forResource: rawValue, withExtension: "wav"),
+            let sound = NSSound(contentsOf: url, byReference: true)
+        else { return }
         sound.volume = 0.6
         Self.playing = sound
         sound.play()
