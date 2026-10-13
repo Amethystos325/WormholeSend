@@ -1,0 +1,4 @@
+module CWormhole [system] {
+    header "shim.h"
+    export *
+}

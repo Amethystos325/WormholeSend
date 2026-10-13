@@ -85,6 +85,10 @@ struct IslandView: View {
         case .refused: "refused"
         case .receiving: "receiving"
         case .received: "received"
+        case .interrupted: "interrupted"
+        case .pairRequest: "pair-request"
+        case .pairWaiting: "pair-waiting"
+        case .notice: "notice"
         }
     }
 
@@ -127,12 +131,22 @@ struct IslandView: View {
             }
         case .failed(let reason):
             FailedContent(reason: reason, onRetry: model.retry)
-        case .refused(let name):
-            StatusLine(symbol: "nosign", color: Palette.warning, text: "\(name) 离线，未发送")
+        case .refused(let name, let reason):
+            StatusLine(symbol: "nosign", color: Palette.warning, text: "\(name) \(reason)，未发送")
         case .receiving:
             if let transfer = model.transfer {
-                ReceivingContent(transfer: transfer)
+                ReceivingContent(transfer: transfer, waiting: model.waitingCount)
             }
+        case .interrupted(let reason):
+            StatusLine(symbol: "exclamationmark.triangle.fill", color: Palette.warning, text: "传输中断", trailing: reason)
+        case .pairRequest(_, let alias, let code):
+            PairRequestContent(alias: alias, code: code, onDecline: model.declinePair, onAccept: model.acceptPair)
+        case .pairWaiting(let alias):
+            StatusLine(symbol: "clock", color: Palette.secondary, text: "等待 \(alias) 确认…")
+        case .notice(let text, let success):
+            StatusLine(
+                symbol: success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                color: success ? Palette.success : Palette.warning, text: text)
         case .received:
             if let transfer = model.transfer {
                 ReceivedContent(transfer: transfer, onReveal: model.revealReceived)
@@ -167,9 +181,9 @@ private struct Avatar: View {
                 .overlay {
                     Image(systemName: device.symbol)
                         .font(.system(size: size * 0.45, weight: .regular))
-                        .foregroundStyle(device.online ? Palette.text : Palette.tertiary)
+                        .foregroundStyle(device.usable ? Palette.text : Palette.tertiary)
                 }
-            if device.online, size >= 36 {
+            if device.usable, size >= 36 {
                 Circle()
                     .fill(Palette.success)
                     .frame(width: 10, height: 10)
@@ -298,10 +312,10 @@ private struct DeviceTile: View {
 
     var body: some View {
         VStack(spacing: 5) {
-            Avatar(device: device, highlighted: hot && device.online)
+            Avatar(device: device, highlighted: hot && device.usable)
             Text(device.name)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(device.online ? Palette.text : Palette.secondary)
+                .foregroundStyle(device.usable ? Palette.text : Palette.secondary)
                 .lineLimit(1)
             Text(status)
                 .font(.system(size: 10.5))
@@ -311,18 +325,14 @@ private struct DeviceTile: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(hot ? (device.online ? Palette.tile : Palette.tileHot) : .clear))
-        .scaleEffect(hot && device.online ? 1.05 : 1)
+                .fill(hot ? (device.usable ? Palette.tile : Palette.tileHot) : .clear))
+        .scaleEffect(hot && device.usable ? 1.05 : 1)
         .animation(.easeOut(duration: 0.15), value: hot)
     }
 
     private var status: String {
-        switch (device.online, device.isDefault) {
-        case (true, true): "在线 · 默认"
-        case (true, false): "在线"
-        case (false, true): "离线 · 默认"
-        case (false, false): "离线"
-        }
+        let state = device.needsRepair ? "需重新配对" : (device.online ? "在线" : "离线")
+        return device.isDefault ? "\(state) · 默认" : state
     }
 }
 
@@ -426,6 +436,42 @@ private struct CompactQueued: View {
     }
 }
 
+/// Another device asks to pair: its name, the code to compare, and the
+/// answer. Same layout as on Windows.
+private struct PairRequestContent: View {
+    let alias: String
+    let code: String
+    let onDecline: () -> Void
+    let onAccept: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(alias) 请求配对")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Palette.text)
+                        .lineLimit(1)
+                    Text("两边显示的数字一致才配对")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.secondary)
+                }
+                Spacer(minLength: 8)
+                Text(code.count == 6 ? "\(code.prefix(3)) \(code.suffix(3))" : code)
+                    .font(.system(size: 24, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Palette.text)
+            }
+            HStack(spacing: 8) {
+                Spacer()
+                Button("拒绝", action: onDecline)
+                    .buttonStyle(PillButtonStyle())
+                Button("配对", action: onAccept)
+                    .buttonStyle(PillButtonStyle(fill: Palette.accent))
+            }
+        }
+    }
+}
+
 private struct FailedContent: View {
     let reason: String
     let onRetry: () -> Void
@@ -447,6 +493,8 @@ private struct FailedContent: View {
 
 private struct ReceivingContent: View {
     let transfer: Transfer
+    /// Other paired devices waiting to send.
+    let waiting: Int
 
     var body: some View {
         VStack(spacing: 10) {
@@ -456,7 +504,7 @@ private struct ReceivingContent: View {
                     Text("\(transfer.device.name) 发来 \(transfer.fileCount) 个文件")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Palette.text)
-                    Text("已配对 · 自动保存到 下载/Wormhole Send")
+                    Text(waiting > 0 ? "还有 \(waiting) 个设备等待发送" : "已配对 · 自动保存")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.secondary)
                 }
@@ -552,13 +600,15 @@ private struct CancelButton: View {
 }
 
 private struct PillButtonStyle: ButtonStyle {
+    var fill = Palette.tile
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Palette.text)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(configuration.isPressed ? Palette.tileHot : Palette.tile))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(fill.opacity(configuration.isPressed ? 0.7 : 1)))
     }
 }
 

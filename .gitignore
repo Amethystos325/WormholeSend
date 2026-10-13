@@ -6,3 +6,4 @@
 /apps/windows/*/bin
 /apps/windows/*/obj
 /apps/windows/.vs
+/apps/macos/Vendor

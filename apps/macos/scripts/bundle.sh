@@ -3,6 +3,7 @@
 set -e
 cd "$(dirname "$0")/.."
 CONFIG="${1:-release}"
+./scripts/build-core.sh
 swift build -c "$CONFIG"
 APP="build/Wormhole Send.app"
 rm -rf "$APP"

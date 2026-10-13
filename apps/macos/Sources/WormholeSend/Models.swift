@@ -1,6 +1,7 @@
 import Foundation
 
-/// A paired device. Fake data for now; the Rust core provides the real list.
+/// A paired device, as the core lists it (`devices.list`). The samples are
+/// for demo mode.
 struct Device: Identifiable, Equatable {
     let id: String
     var name: String
@@ -8,6 +9,38 @@ struct Device: Identifiable, Equatable {
     var symbol: String
     var online: Bool
     var isDefault: Bool
+    /// It refused a transfer: it no longer trusts this device.
+    var needsRepair = false
+
+    init(id: String, name: String, symbol: String, online: Bool, isDefault: Bool, needsRepair: Bool = false) {
+        self.id = id
+        self.name = name
+        self.symbol = symbol
+        self.online = online
+        self.isDefault = isDefault
+        self.needsRepair = needsRepair
+    }
+
+    init(info: DeviceInfo) {
+        self.init(
+            id: info.fingerprint, name: info.alias, symbol: Device.symbol(for: info.deviceType),
+            online: info.online, isDefault: info.isDefault, needsRepair: info.needsRepair)
+    }
+
+    /// Can take files now. A device that needs pairing again counts as
+    /// unavailable, like on Windows.
+    var usable: Bool { online && !needsRepair }
+
+    var unusableReason: String { needsRepair ? "需要重新配对" : "离线" }
+
+    static func symbol(for deviceType: String?) -> String {
+        switch deviceType {
+        case "mobile": "iphone"
+        case "web": "globe"
+        case "server", "headless": "server.rack"
+        default: "desktopcomputer"
+        }
+    }
 
     static let samples: [Device] = [
         Device(id: "desk", name: "书房台式机", symbol: "desktopcomputer", online: true, isDefault: true),
@@ -17,13 +50,26 @@ struct Device: Identifiable, Equatable {
 }
 
 struct Transfer: Equatable {
+    /// The core's transfer ID, once it has one.
+    var id: String?
     var device: Device
+    /// The files sent, or once received, the saved files and folders.
     var files: [URL]
     /// "季度报告.pdf" or "3 个文件".
     var label: String
     var progress: Double = 0
+    var count: Int
 
-    var fileCount: Int { files.count }
+    init(id: String? = nil, device: Device, files: [URL], label: String, progress: Double = 0, count: Int? = nil) {
+        self.id = id
+        self.device = device
+        self.files = files
+        self.label = label
+        self.progress = progress
+        self.count = count ?? files.count
+    }
+
+    var fileCount: Int { count }
 }
 
 enum FileLabel {

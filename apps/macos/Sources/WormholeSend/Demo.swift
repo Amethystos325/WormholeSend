@@ -6,17 +6,18 @@ import AppKit
 ///
 /// Phases: hint, target, picker, picker-offline, single, unavailable,
 /// sending, queued, queued-compact, done, failed, refused, receiving,
-/// received.
+/// received, interrupted, refused-repair, pair-request, pair-waiting,
+/// notice, notice-failed. Sample data; the core is not started.
 @MainActor
 enum Demo {
-    static func apply(arguments: [String], to model: IslandModel, place: @escaping (NSScreen) -> Void) {
-        guard let name = value(of: "--demo", in: arguments) else { return }
-        if value(of: "--screen", in: arguments) == "external",
+    static func apply(to model: IslandModel, place: @escaping (NSScreen) -> Void) {
+        guard let name = Arguments.value(of: "--demo") else { return }
+        if Arguments.value(of: "--screen") == "external",
             let external = NSScreen.screens.first(where: { !ScreenMode(screen: $0).isNotch })
         {
             place(external)
         }
-        if let count = value(of: "--devices", in: arguments).flatMap(Int.init) {
+        if let count = Arguments.value(of: "--devices").flatMap(Int.init) {
             model.devices = Array(Device.samples.prefix(count))
         }
         let files = [URL(fileURLWithPath: "/tmp/季度报告.pdf")]
@@ -52,11 +53,18 @@ enum Demo {
             case "failed":
                 model.transfer = sample
                 model.phase = .failed("网络中断")
-            case "refused": model.phase = .refused("iPad")
+            case "refused": model.phase = .refused(name: "iPad", reason: "离线")
+            case "refused-repair": model.phase = .refused(name: "MacBook Air", reason: "需要重新配对")
+            case "pair-request": model.phase = .pairRequest(pairId: "demo", alias: "书房台式机", code: "482019")
+            case "pair-waiting": model.phase = .pairWaiting(alias: "书房台式机")
+            case "notice": model.phase = .notice(text: "已与 书房台式机 配对", success: true)
+            case "notice-failed": model.phase = .notice(text: "配对失败：对方拒绝了配对", success: false)
             case "receiving":
                 let received = DemoFiles.make()
                 model.transfer = Transfer(device: Device.samples[1], files: received, label: FileLabel.of(received), progress: 0.62)
+                model.waitingCount = 1
                 model.phase = .receiving
+            case "interrupted": model.phase = .interrupted("对方取消了发送")
             case "received":
                 let received = DemoFiles.make()
                 model.transfer = Transfer(device: Device.samples[1], files: received, label: FileLabel.of(received), progress: 1)
@@ -65,10 +73,5 @@ enum Demo {
                 print("Unknown demo phase: \(name)")
             }
         }
-    }
-
-    private static func value(of flag: String, in arguments: [String]) -> String? {
-        guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
-        return arguments[index + 1]
     }
 }
