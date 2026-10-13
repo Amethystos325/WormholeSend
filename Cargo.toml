@@ -15,11 +15,18 @@ clap = { version = "4.6", features = ["derive", "env"] }
 dirs = "6.0"
 futures-util = "0.3"
 gethostname = "1.0"
+getrandom = "0.3"
+http-body-util = "0.1"
+hyper = { version = "1.11", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
 mime_guess = "2.0"
 pem = "4.0"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+socket2 = "0.6"
 tokio = { version = "1", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2.5"

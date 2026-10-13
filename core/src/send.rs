@@ -4,6 +4,7 @@
 //! The upload loop is adapted from the LocalSend CLI (`cli/src/send_task.rs`,
 //! Apache-2.0).
 
+use crate::control::client::{ControlClient, ControlError, control_addr};
 use crate::event::{CoreEvent, Direction, TransferStatus};
 use crate::node::{ActiveSend, Inner};
 use crate::trust::{TrustStore, TrustedDevice, normalize_fingerprint, short_fingerprint};
@@ -17,6 +18,7 @@ use localsend::model::discovery::ProtocolType;
 use localsend::model::transfer::{FileContent, FileDto, FileMetadata};
 use localsend::reqwest;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -31,6 +33,10 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 const ANNOUNCE_WAIT: Duration = Duration::from_secs(2);
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+
+/// A busy receiver (HTTP 409) right after this device's turn came is retried.
+const BUSY_RETRIES: u32 = 3;
+const BUSY_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 /// Cancellation state of a send, shared between the node and the send task.
 #[derive(Clone)]
@@ -136,6 +142,23 @@ async fn run(
         send.host = http.host.clone();
     }
 
+    // Wait for this device's turn in the receiver's queue.
+    let control = control_addr(&http.host, http.port);
+    let ticket = match wait_turn(inner, transfer_id, device, control, cancel).await {
+        Ok(ticket) => ticket,
+        Err(outcome) => return outcome,
+    };
+    // Gives the turn back when the transfer stops before its session starts.
+    let release = || {
+        if let (Some(addr), Some(ticket)) = (control, ticket.clone()) {
+            let (inner, fingerprint) = (inner.clone(), fingerprint.clone());
+            tokio::spawn(async move {
+                let client = ControlClient { identity: &inner.identity, addr, expected: Some(&fingerprint) };
+                let _ = client.queue_leave(&ticket).await;
+            });
+        }
+    };
+
     inner.emit(CoreEvent::TransferStarted {
         id: transfer_id.to_string(),
         direction: Direction::Send,
@@ -158,29 +181,48 @@ async fn run(
     };
     let protocol = ProtocolType::Https;
 
-    let prepared = client
-        .prepare_upload(
-            protocol,
-            &http.host,
-            http.port,
-            None,
-            PrepareUploadRequestDtoV2 {
-                info: inner.identity.register_dto(),
-                files: files.clone(),
-            },
-            None,
-            cancel.token.clone(),
-        )
-        .await;
+    let mut attempt = 0;
+    let prepared = loop {
+        let prepared = client
+            .prepare_upload(
+                protocol,
+                &http.host,
+                http.port,
+                None,
+                PrepareUploadRequestDtoV2 {
+                    info: inner.identity.register_dto(),
+                    files: files.clone(),
+                },
+                None,
+                cancel.token.clone(),
+            )
+            .await;
+        match prepared {
+            // The previous session may still be closing on the receiver,
+            // although it is this device's turn already.
+            Err(ClientError::StatusCode(err)) if err.status == 409 && attempt < BUSY_RETRIES => {
+                attempt += 1;
+                tokio::time::sleep(BUSY_RETRY_DELAY).await;
+            }
+            result => break result,
+        }
+    };
     let prepared = match prepared {
         Ok(prepared) => prepared,
-        Err(ClientError::Cancelled) => return Outcome::cancelled(),
+        Err(ClientError::Cancelled) => {
+            release();
+            return Outcome::cancelled();
+        }
         Err(ClientError::StatusCode(err)) => {
+            release();
             return match err.status {
-                403 => Outcome::fail(
-                    TransferStatus::Rejected,
-                    format!("{} 没有信任本机（未配对或已解除配对）", device.alias),
-                ),
+                403 => {
+                    mark_needs_repair(inner, fingerprint);
+                    Outcome::fail(
+                        TransferStatus::Rejected,
+                        format!("{} 没有信任本机（未配对或已解除配对）", device.alias),
+                    )
+                }
                 409 => Outcome::fail(
                     TransferStatus::Busy,
                     format!("{} 正在接收其他文件", device.alias),
@@ -188,7 +230,10 @@ async fn run(
                 status => Outcome::fail(TransferStatus::Failed, format!("请求失败（HTTP {status}）")),
             };
         }
-        Err(err) => return Outcome::fail(TransferStatus::Failed, err.to_string()),
+        Err(err) => {
+            release();
+            return Outcome::fail(TransferStatus::Failed, err.to_string());
+        }
     };
     let Some(response) = prepared.response else {
         return Outcome::fail(TransferStatus::Failed, "对方没有接收任何文件");
@@ -322,6 +367,67 @@ async fn run(
         let _ = TrustStore::update(&inner.home, |store| (store.record_sent(fingerprint), ()));
     }
     outcome
+}
+
+/// Takes a ticket in the receiver's queue and waits for the turn, reporting
+/// the position. Returns the ticket, or `None` for a receiver without a
+/// control service (it is sent to directly); `Err` ends the transfer.
+async fn wait_turn(
+    inner: &Arc<Inner>,
+    transfer_id: &str,
+    device: &TrustedDevice,
+    control: Option<SocketAddr>,
+    cancel: &SendCancel,
+) -> Result<Option<String>, Outcome> {
+    let Some(addr) = control else {
+        return Ok(None);
+    };
+    let client = ControlClient {
+        identity: &inner.identity,
+        addr,
+        expected: Some(&device.fingerprint),
+    };
+    let mut status = match client.queue_join().await {
+        Ok(status) => status,
+        Err(ControlError::Status(403, _)) => {
+            mark_needs_repair(inner, &device.fingerprint);
+            return Err(Outcome::fail(
+                TransferStatus::Rejected,
+                format!("{} 没有信任本机（未配对或已解除配对）", device.alias),
+            ));
+        }
+        Err(ControlError::Status(503, _)) => {
+            return Err(Outcome::fail(
+                TransferStatus::Busy,
+                format!("{} 的排队人数已满", device.alias),
+            ));
+        }
+        Err(_) => return Ok(None),
+    };
+    let mut reported = None;
+    while !status.ready {
+        if reported != Some(status.position) {
+            reported = Some(status.position);
+            inner.emit(CoreEvent::TransferQueued {
+                id: transfer_id.to_string(),
+                device_id: device.fingerprint.clone(),
+                position: status.position,
+            });
+        }
+        let next = tokio::select! {
+            next = client.queue_wait(&status.ticket) => next,
+            _ = cancel.token.cancelled() => {
+                let _ = client.queue_leave(&status.ticket).await;
+                return Err(Outcome::cancelled());
+            }
+        };
+        status = next.map_err(|err| Outcome::fail(TransferStatus::Failed, format!("排队时失去连接：{err}")))?;
+    }
+    Ok(Some(status.ticket))
+}
+
+fn mark_needs_repair(inner: &Inner, fingerprint: &str) {
+    let _ = TrustStore::update(&inner.home, |store| (store.mark_needs_repair(fingerprint), ()));
 }
 
 /// Finds a dialable address of the device: the one discovery saw recently,

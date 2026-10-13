@@ -7,7 +7,9 @@ use crate::event::CoreEvent;
 use crate::identity::Identity;
 use crate::send::SendCancel;
 use crate::trust::{TrustStore, normalize_fingerprint};
-use crate::{receive, send};
+use crate::pairing::{self, Pairings};
+use crate::queue::ReceiveQueue;
+use crate::{control, receive, send};
 use anyhow::Context;
 use localsend::discovery::{
     DEFAULT_DISCOVERY_TIMEOUT, DeviceChannel, DiscoveredDevice, DiscoveryConfig, DiscoveryEvent,
@@ -56,6 +58,8 @@ pub struct DeviceInfo {
     pub online: bool,
     pub paired: bool,
     pub is_default: bool,
+    /// Paired here, but the device refused a transfer: pair again.
+    pub needs_repair: bool,
 }
 
 pub struct Node {
@@ -78,6 +82,8 @@ pub(crate) struct Inner {
     pub(crate) sends: Mutex<HashMap<String, ActiveSend>>,
     /// When each device was last seen, by fingerprint.
     presence: Mutex<HashMap<String, Presence>>,
+    pub(crate) pairings: Pairings,
+    pub(crate) queue: ReceiveQueue,
 }
 
 pub(crate) struct ActiveSend {
@@ -105,18 +111,8 @@ impl Node {
         let mut identity =
             Identity::load_or_generate(&home, settings.alias.clone(), settings.port)?;
 
-        let (server, server_rx, server_stop_tx) = match start_server(&identity, settings.port).await
-        {
-            Ok(started) => started,
-            Err(err) if port_fallback && is_addr_in_use(&err) => start_server(&identity, 0).await?,
-            Err(err) if is_addr_in_use(&err) => {
-                return Err(err).context(format!(
-                    "端口 {} 已被占用（可能已有一个 whs receive 在运行）",
-                    settings.port
-                ));
-            }
-            Err(err) => return Err(err).context("无法启动传输服务"),
-        };
+        let (server, server_rx, server_stop_tx, control_listeners) =
+            bind_ports(&identity, settings.port, port_fallback).await?;
         // Announce the port actually bound.
         identity.port = server.port();
 
@@ -150,9 +146,11 @@ impl Node {
             settings,
             identity,
             discovery,
+            queue: ReceiveQueue::new(events_tx.clone()),
             events: events_tx,
             sends: Mutex::new(HashMap::new()),
             presence: Mutex::new(HashMap::new()),
+            pairings: Pairings::default(),
         });
         let server = Arc::new(server);
 
@@ -178,6 +176,17 @@ impl Node {
         tasks.push(tokio::spawn({
             let inner = inner.clone();
             async move { inner.discovery.announce().await }
+        }));
+        tasks.extend(control::server::spawn(inner.clone(), control_listeners)?);
+        tasks.push(tokio::spawn({
+            let inner = inner.clone();
+            async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(1));
+                loop {
+                    interval.tick().await;
+                    inner.queue.sweep();
+                }
+            }
         }));
 
         Ok((
@@ -228,6 +237,7 @@ impl Node {
                     online: inner.is_online(&fingerprint),
                     paired: trusted.is_some(),
                     is_default: trusted.is_some_and(|t| t.is_default),
+                    needs_repair: trusted.is_some_and(|t| t.needs_repair),
                     fingerprint,
                     alias: device.alias.clone(),
                     device_type: device.device_type.as_ref().map(type_name),
@@ -247,6 +257,7 @@ impl Node {
                     online: false,
                     paired: true,
                     is_default: trusted.is_default,
+                    needs_repair: trusted.needs_repair,
                 });
             }
         }
@@ -268,6 +279,23 @@ impl Node {
             paths,
         );
         transfer_id
+    }
+
+    /// Starts pairing with a discovered device. Returns the pairing ID once
+    /// the code is shown (`pair.code`); the result arrives as `pair.result`.
+    pub async fn pair(&self, fingerprint: &str) -> anyhow::Result<String> {
+        pairing::start(&self.inner, fingerprint).await
+    }
+
+    /// This side's user compared the codes and accepts or declines.
+    pub fn pair_confirm(&self, pair_id: &str, accept: bool) -> anyhow::Result<()> {
+        pairing::confirm(&self.inner, pair_id, accept)
+    }
+
+    /// Unpairs a device and tells it. `None`: it was not paired;
+    /// `Some(false)`: it is told when it is seen again.
+    pub async fn unpair(&self, fingerprint: &str) -> anyhow::Result<Option<bool>> {
+        pairing::unpair(&self.inner, fingerprint).await
     }
 
     /// Cancels an outgoing transfer. Returns whether it was still running.
@@ -359,10 +387,13 @@ impl Inner {
 
     /// A device was confirmed by discovery (`first` on its first confirmation
     /// in this run).
-    pub(crate) fn on_device_seen(&self, device: &DiscoveredDevice, first: bool) {
+    pub(crate) fn on_device_seen(self: &Arc<Self>, device: &DiscoveredDevice, first: bool) {
         let fingerprint = normalize_fingerprint(&device.fingerprint);
         if fingerprint == self.identity.fingerprint {
             return;
+        }
+        if let Some(http) = device.http() {
+            pairing::deliver_pending(self, &fingerprint, &http.host, http.port);
         }
         let paired = match device.http() {
             Some(http) => TrustStore::update(&self.home, |store| {
@@ -472,12 +503,60 @@ async fn start_server(
     Ok((server, server_rx, stop_tx))
 }
 
+/// Binds the transfer port and the control port (+1) as a pair. With
+/// `fallback`, a taken pair moves on to the next one.
+async fn bind_ports(
+    identity: &Identity,
+    base: u16,
+    fallback: bool,
+) -> anyhow::Result<(
+    ServerHandle,
+    mpsc::Receiver<ServerEventV2>,
+    oneshot::Sender<()>,
+    Vec<std::net::TcpListener>,
+)> {
+    let attempts = if fallback { 10 } else { 1 };
+    let mut last_error = None;
+    for attempt in 0..attempts {
+        let Some(port) = base.checked_add(2 * attempt) else { break };
+        let control = match control::server::bind(port + 1) {
+            Ok(listeners) => listeners,
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
+                last_error = Some(anyhow::Error::from(err));
+                continue;
+            }
+            Err(err) => return Err(err).context(format!("无法监听控制端口 {}", port + 1)),
+        };
+        match start_server(identity, port).await {
+            Ok((server, rx, stop)) => return Ok((server, rx, stop, control)),
+            Err(err) if is_addr_in_use(&err) => last_error = Some(err),
+            Err(err) => return Err(err).context("无法启动传输服务"),
+        }
+    }
+    let err = last_error.unwrap_or_else(|| anyhow::anyhow!("no free port"));
+    Err(err).context(match fallback {
+        true => format!("端口 {base} 起都被占用"),
+        false => format!("端口 {base} 或 {} 已被占用（可能已有一个 whs receive 在运行）", base + 1),
+    })
+}
+
 fn is_addr_in_use(err: &anyhow::Error) -> bool {
     err.chain().any(|cause| {
         cause
             .downcast_ref::<std::io::Error>()
             .is_some_and(|io| io.kind() == std::io::ErrorKind::AddrInUse)
     })
+}
+
+pub(crate) fn parse_type(name: &str) -> Option<DeviceType> {
+    match name {
+        "mobile" => Some(DeviceType::Mobile),
+        "desktop" => Some(DeviceType::Desktop),
+        "web" => Some(DeviceType::Web),
+        "headless" => Some(DeviceType::Headless),
+        "server" => Some(DeviceType::Server),
+        _ => None,
+    }
 }
 
 pub(crate) fn type_name(device_type: &DeviceType) -> String {

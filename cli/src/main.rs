@@ -49,7 +49,19 @@ enum Command {
         save_dir: Option<PathBuf>,
     },
 
-    /// 管理已配对（信任）的设备
+    /// 与附近的设备配对：双方核对同一个 6 位码
+    Pair {
+        /// 设备名称或指纹前缀（用 whs devices 查看）
+        target: String,
+    },
+
+    /// 解除与一台设备的配对，并通知对方
+    Unpair {
+        /// 设备名称或指纹前缀
+        target: String,
+    },
+
+    /// 手动管理信任列表（调试用；正常请用 pair / unpair）
     #[command(subcommand)]
     Trust(TrustCommand),
 
@@ -126,6 +138,8 @@ async fn run(cli: Cli) -> anyhow::Result<i32> {
     match cli.command {
         Command::Id => show_id(&out, &home, &settings),
         Command::Config { alias, save_dir } => configure(&out, &home, settings, alias, save_dir),
+        Command::Pair { target } => pair(out, home, settings, target).await,
+        Command::Unpair { target } => unpair(&out, home, settings, target).await,
         Command::Trust(command) => trust_command(&out, &home, settings, command).await,
         Command::Devices { wait } => devices(&out, home, settings, wait).await,
         Command::Receive { save_dir } => {
@@ -206,7 +220,7 @@ async fn trust_command(
             if out.json {
                 out.json_line(&store.devices());
             } else if store.devices().is_empty() {
-                println!("还没有配对设备。用 whs trust add 添加。");
+                println!("还没有配对设备。用 whs pair 和附近的设备配对。");
             } else {
                 for device in store.devices() {
                     let address = match (&device.last_host, device.last_port) {
@@ -214,11 +228,12 @@ async fn trust_command(
                         _ => "地址未知".to_string(),
                     };
                     println!(
-                        "{} {}  {}  {}",
+                        "{} {}  {}  {}{}",
                         if device.is_default { "★" } else { " " },
                         device.alias,
                         trust::short_fingerprint(&device.fingerprint),
-                        address
+                        address,
+                        if device.needs_repair { "  （需要重新配对）" } else { "" }
                     );
                 }
             }
@@ -338,10 +353,11 @@ async fn devices(out: &Printer, home: PathBuf, settings: Settings, wait: u64) ->
             _ => String::new(),
         };
         println!(
-            "{mark} {}  {}  {}  {address}",
+            "{mark} {}  {}  {}  {address}{}",
             device.alias,
             if device.online { "在线" } else { "离线" },
             trust::short_fingerprint(&device.fingerprint),
+            if device.needs_repair { "  （需要重新配对）" } else { "" }
         );
     }
     if !devices.is_empty() {
@@ -370,11 +386,35 @@ async fn receive(mut out: Printer, home: PathBuf, settings: Settings) -> anyhow:
         );
         println!("只接收已配对设备的文件。按 Ctrl+C 退出。");
     }
+    // A pairing whose code waits for y/n on stdin.
+    let mut awaiting: Option<String> = None;
+    let mut lines = stdin_lines();
+    let mut stdin_open = true;
     loop {
         tokio::select! {
-            event = events.recv() => match event {
-                Some(event) => out.event(&event, true),
-                None => break,
+            event = events.recv() => {
+                let Some(event) = event else { break };
+                out.event(&event, true);
+                match &event {
+                    CoreEvent::PairCode { pair_id, .. } => {
+                        awaiting = Some(pair_id.clone());
+                        if !out.json {
+                            println!("输入 y 确认配对，n 拒绝：");
+                        }
+                    }
+                    CoreEvent::PairResult { pair_id, .. } if awaiting.as_ref() == Some(pair_id) => awaiting = None,
+                    _ => {}
+                }
+            }
+            line = lines.recv(), if stdin_open => match line {
+                Some(line) => {
+                    if let Some(pair_id) = awaiting.take()
+                        && let Err(err) = node.pair_confirm(&pair_id, is_yes(&line))
+                    {
+                        out.say(&format!("{err:#}"));
+                    }
+                }
+                None => stdin_open = false,
             },
             _ = interrupt.recv() => break,
         }
@@ -455,6 +495,121 @@ impl Interrupt {
 
     async fn recv(&mut self) {
         self.signal.recv().await;
+    }
+}
+
+async fn pair(mut out: Printer, home: PathBuf, settings: Settings, target: String) -> anyhow::Result<i32> {
+    let mut interrupt = Interrupt::new()?;
+    let (node, mut events) = Node::start(NodeOptions {
+        home,
+        settings,
+        port_fallback: true,
+    })
+    .await?;
+    if !out.json {
+        eprintln!("正在搜索附近设备…");
+    }
+    let deadline = Instant::now() + Duration::from_secs(3);
+    node.refresh().await;
+    tokio::time::sleep(deadline.saturating_duration_since(Instant::now())).await;
+    let devices = node.devices();
+    let started = match trust::resolve_device(&devices, &target, |d| (&d.alias, &d.fingerprint)) {
+        Ok(device) => node.pair(&device.fingerprint).await,
+        Err(err) => Err(anyhow::anyhow!("{err}（用 whs devices 查看附近设备）")),
+    };
+    let pair_id = match started {
+        Ok(pair_id) => pair_id,
+        Err(err) => {
+            node.stop().await;
+            return Err(err);
+        }
+    };
+    let mut lines = stdin_lines();
+    let mut asking = false;
+    let code = loop {
+        tokio::select! {
+            event = events.recv() => {
+                let Some(event) = event else { break 1 };
+                match &event {
+                    CoreEvent::PairCode { pair_id: id, .. } if *id == pair_id => {
+                        out.event(&event, false);
+                        asking = true;
+                        if !out.json {
+                            println!("两边的数字一致吗？输入 y 确认，n 拒绝：");
+                        }
+                    }
+                    CoreEvent::PairResult { pair_id: id, ok, .. } if *id == pair_id => {
+                        out.event(&event, false);
+                        break if *ok { 0 } else { 1 };
+                    }
+                    CoreEvent::Error { .. } => out.event(&event, false),
+                    _ => {}
+                }
+            }
+            line = lines.recv(), if asking => {
+                asking = false;
+                let accept = line.as_deref().is_some_and(is_yes);
+                node.pair_confirm(&pair_id, accept)?;
+                if accept && !out.json {
+                    println!("等待对方确认…");
+                }
+            }
+            _ = interrupt.recv() => {
+                let _ = node.pair_confirm(&pair_id, false);
+                break 1;
+            }
+        }
+    };
+    node.stop().await;
+    Ok(code)
+}
+
+async fn unpair(out: &Printer, home: PathBuf, settings: Settings, target: String) -> anyhow::Result<i32> {
+    let device = TrustStore::load(&home)?
+        .resolve(&target)
+        .map_err(anyhow::Error::msg)?
+        .clone();
+    let (node, _events) = Node::start(NodeOptions {
+        home,
+        settings,
+        port_fallback: true,
+    })
+    .await?;
+    // Learn the device's current address before telling it.
+    node.refresh().await;
+    let result = node.unpair(&device.fingerprint).await;
+    node.stop().await;
+    let message = match result? {
+        Some(true) => format!("已解除与 {} 的配对，并已通知对方", device.alias),
+        Some(false) => format!("已解除与 {} 的配对；对方现在不在线，下次发现它时会通知", device.alias),
+        None => format!("{} 没有配对", device.alias),
+    };
+    out.say(&message);
+    Ok(0)
+}
+
+/// Lines typed on stdin, read on a separate thread.
+fn stdin_lines() -> tokio::sync::mpsc::UnboundedReceiver<String> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+fn is_yes(line: &str) -> bool {
+    matches!(line.trim().to_lowercase().as_str(), "y" | "yes" | "是")
+}
+
+fn format_code(code: &str) -> String {
+    match code.len() {
+        6 => format!("{} {}", &code[..3], &code[3..]),
+        _ => code.to_string(),
     }
 }
 
@@ -636,6 +791,27 @@ impl Printer {
             } => {
                 let fp = trust::short_fingerprint(device_id);
                 self.line(&format!("✗ 已拒绝未配对设备 {alias}（{fp}，{ip}）的发送请求"));
+            }
+            CoreEvent::TransferQueued { position, .. } => {
+                self.line(&format!("⏳ 对方正在接收其他设备的文件，排队中 · 前面还有 {position} 个"));
+            }
+            CoreEvent::ReceiveWaiting { count } => match count {
+                0 => self.line("排队已清空"),
+                count => self.line(&format!("还有 {count} 个设备在排队")),
+            },
+            CoreEvent::PairIncoming { device_id, alias, .. } => {
+                let fp = trust::short_fingerprint(device_id);
+                self.line(&format!("{alias}（{fp}）请求配对"));
+            }
+            CoreEvent::PairCode { alias, code, .. } => {
+                self.line(&format!("配对码：{}　请和 {alias} 屏幕上的数字核对", format_code(code)));
+            }
+            CoreEvent::PairResult { alias, ok, reason, .. } => match ok {
+                true => self.line(&format!("✓ 已与 {alias} 配对，之后互传文件不用确认")),
+                false => self.line(&format!("✗ 配对失败：{}", reason.as_deref().unwrap_or("未知原因"))),
+            },
+            CoreEvent::DeviceUnpaired { alias, .. } => {
+                self.line(&format!("{alias} 解除了与本机的配对"));
             }
             CoreEvent::Error { message } => self.line(&format!("! {message}")),
         }

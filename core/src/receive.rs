@@ -137,7 +137,16 @@ impl Receiver {
                     return;
                 }
                 let fingerprint = fingerprint.unwrap_or_default();
+                // One session at a time, in queue order (see `queue`).
+                if !self.inner.queue.admit(&fingerprint) {
+                    let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
+                    self.inner.emit(CoreEvent::Error {
+                        message: format!("{alias} 没有排队就发送，已拒绝"),
+                    });
+                    return;
+                }
                 if let Err(err) = std::fs::create_dir_all(&self.inner.settings.save_dir) {
+                    self.inner.queue.session_ended(&fingerprint);
                     let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
                     self.inner.emit(CoreEvent::Error {
                         message: format!(
@@ -150,6 +159,7 @@ impl Receiver {
                 let ids: HashSet<String> = files.keys().cloned().collect();
                 if decision_tx.send(PrepareUploadDecisionV2::Accept(ids)).is_err() {
                     // The sender went away while this was being decided.
+                    self.inner.queue.session_ended(&fingerprint);
                     return;
                 }
                 let session = ReceiveSession {
@@ -338,6 +348,7 @@ impl Receiver {
             return;
         }
         let session = self.session.take().unwrap();
+        self.inner.queue.session_ended(&session.fingerprint);
         let (status, error) = match session.ended.unwrap() {
             SessionEndReasonV2::Cancelled => {
                 self.delete_unfinished(&session);
@@ -379,6 +390,7 @@ impl Receiver {
     /// The node stops while a transfer is running: discard the partial files.
     fn abort_session(&mut self) {
         if let Some(session) = self.session.take() {
+            self.inner.queue.session_ended(&session.fingerprint);
             self.delete_unfinished(&session);
             let server = self.server.clone();
             let session_id = session.session_id.clone();

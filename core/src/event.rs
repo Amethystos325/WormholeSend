@@ -58,6 +58,50 @@ pub enum CoreEvent {
         ip: String,
     },
 
+    /// Waiting for this device's turn in the receiver's queue.
+    #[serde(rename = "transfer.queued")]
+    TransferQueued {
+        id: String,
+        device_id: String,
+        position: usize,
+    },
+
+    /// How many paired devices wait to send to this one.
+    #[serde(rename = "receive.waiting")]
+    ReceiveWaiting { count: usize },
+
+    /// Another device asks to pair; its code follows as `pair.code`.
+    #[serde(rename = "pair.incoming")]
+    PairIncoming {
+        pair_id: String,
+        device_id: String,
+        alias: String,
+        device_type: Option<String>,
+    },
+
+    /// The 6-digit code to compare with the other device's screen, then
+    /// accept or decline.
+    #[serde(rename = "pair.code")]
+    PairCode {
+        pair_id: String,
+        device_id: String,
+        alias: String,
+        code: String,
+    },
+
+    #[serde(rename = "pair.result")]
+    PairResult {
+        pair_id: String,
+        device_id: String,
+        alias: String,
+        ok: bool,
+        reason: Option<String>,
+    },
+
+    /// The other device unpaired this one.
+    #[serde(rename = "device.unpaired")]
+    DeviceUnpaired { id: String, alias: String },
+
     #[serde(rename = "error")]
     Error { message: String },
 }

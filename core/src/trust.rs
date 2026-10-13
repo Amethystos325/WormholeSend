@@ -33,6 +33,9 @@ pub struct TrustedDevice {
     pub last_sent_at: Option<u64>,
     #[serde(default)]
     pub is_default: bool,
+    /// The device refused a transfer: it no longer trusts this one.
+    #[serde(default)]
+    pub needs_repair: bool,
 }
 
 impl TrustedDevice {
@@ -46,6 +49,7 @@ impl TrustedDevice {
             last_port: None,
             last_sent_at: None,
             is_default: false,
+            needs_repair: false,
         }
     }
 }
@@ -175,6 +179,17 @@ impl TrustStore {
         device.last_host = Some(host.to_string());
         device.last_port = Some(port);
         changed
+    }
+
+    pub fn mark_needs_repair(&mut self, fingerprint: &str) -> bool {
+        let fingerprint = normalize_fingerprint(fingerprint);
+        match self.devices.iter_mut().find(|d| d.fingerprint == fingerprint) {
+            Some(device) if !device.needs_repair => {
+                device.needs_repair = true;
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn record_sent(&mut self, fingerprint: &str) -> bool {

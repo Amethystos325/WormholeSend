@@ -6,9 +6,12 @@
 //! store. Everything else is declined.
 
 pub mod config;
+mod control;
 pub mod event;
 pub mod identity;
 mod node;
+mod pairing;
+mod queue;
 mod receive;
 mod save_path;
 mod send;
