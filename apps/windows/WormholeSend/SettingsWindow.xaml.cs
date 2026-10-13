@@ -41,12 +41,8 @@ public partial class SettingsWindow : FluentWindow
         if (session.Settings is not { } settings) return;
         AliasBox.Text = settings["alias"]?.GetValue<string>();
         SaveDirText.Text = settings["saveDir"]?.GetValue<string>();
-        var fingerprint = settings["fingerprint"]?.GetValue<string>() ?? "";
-        About.Text = $"本机指纹 {Group(fingerprint)}\n端口 {settings["port"]} · {Core.Version}";
+        About.Text = $"端口 {settings["port"]} · {Core.Version}";
     }
-
-    static string Group(string fingerprint) =>
-        string.Join(" ", Enumerable.Range(0, fingerprint.Length / 4).Take(8).Select(i => fingerprint.Substring(i * 4, 4))) + (fingerprint.Length > 32 ? " …" : "");
 
     void Refresh()
     {

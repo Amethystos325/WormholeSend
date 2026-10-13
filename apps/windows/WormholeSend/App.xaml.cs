@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
+using System.Windows.Media;
 
 namespace WormholeSend;
 
@@ -13,6 +14,11 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Text with its stems on whole pixels: WPF's default (Ideal) spreads
+        // Chinese strokes over two pixels, and they look blurred.
+        TextOptions.TextFormattingModeProperty.OverrideMetadata(typeof(FrameworkElement),
+            new FrameworkPropertyMetadata(TextFormattingMode.Display,
+                FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.Inherits));
         var options = Options.Parse(e.Args);
         if (options.Log) Log.Enable();
         // One app per data directory. Starting it again opens the settings

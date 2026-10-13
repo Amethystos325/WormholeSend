@@ -69,7 +69,7 @@ sealed class IslandView : Grid
         island.MouseLeftButtonUp += (_, _) => { if (isActiveScreen) model.IslandTapped(); };
         Children.Add(island);
 
-        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
         ApplyFrame();
         model.PropertyChanged += ModelChanged;
