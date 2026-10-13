@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the tray icon (NotifyIcon) and the monitor list (Screen). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>WormholeSend</AssemblyName>
+    <Product>Wormhole Send</Product>
+    <!-- For the source-generated P/Invoke in Native.cs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WinForms would rather set DPI awareness in code, but this is a WPF
+         app: the manifest is the place for it. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms types clash with WPF ones (Application, Point, Size...);
+         the few WinForms uses are written out with a `Forms` alias. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WormholeSend.Tests" />
+  </ItemGroup>
+
+</Project>

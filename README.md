@@ -2,18 +2,19 @@
 
 局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
 
-当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）和第 4 步（配对与接收排队）已完成；第 3 步（Windows 顶部岛）待做。
+当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）待做。
 
 | 目录 | 内容 |
 | --- | --- |
 | `core/` | Rust 核心 `wormhole-core`：身份、信任库、发现、收发、控制服务（配对、解除配对、接收排队），基于 LocalSend 的 `localsend` crate |
 | `cli/` | 命令行 `whs`，用来在原生界面之前验证核心 |
 | `apps/macos/` | macOS 刘海面板验证原型（假数据） |
+| `apps/windows/` | Windows 顶部岛验证原型（WPF，假数据） |
 
 ## 构建
 
 - macOS：安装 [Rust](https://rustup.rs)，然后 `cargo build --release`，程序在 `target/release/whs`。
-- Windows：安装 Rust 和 Visual Studio Build Tools（勾选“使用 C++ 的桌面开发”），然后 `cargo build --release`，程序在 `target\release\whs.exe`。
+- Windows：安装 Rust 和 Visual Studio Build Tools（勾选“使用 C++ 的桌面开发”），先运行一次 `git config --global core.longpaths true`（localsend 依赖带的 flutter 子模块里有超过 260 字符的路径，不开会检出失败），然后 `cargo build --release`，程序在 `target\release\whs.exe`。
 
 ## 两台电脑互传
 
@@ -49,8 +50,8 @@
 
 ## 与设计相比还没做的
 
-- 两端原生界面还没接入核心：还缺 C 接口层（`core-ffi`），刘海面板目前用假数据。
-- Windows 顶部岛（第 3 步）。
+- 两端原生界面还没接入核心：还缺 C 接口层（`core-ffi`），刘海面板和顶部岛目前用假数据。
+- 设置窗口、首次引导、开机启动、安装包（Windows 安装包要放行 TCP 53320、TCP 53321 和 UDP 53320）。
 
 ## 致谢
 

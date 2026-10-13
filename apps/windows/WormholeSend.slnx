@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="WormholeSend.Tests/WormholeSend.Tests.csproj" />
+  <Project Path="WormholeSend/WormholeSend.csproj" />
+</Solution>
