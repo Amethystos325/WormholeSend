@@ -1,15 +1,15 @@
 # Wormhole Send
 
-局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。也能和手机、电脑上的 LocalSend 互传（每次由接收方确认）。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
+局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。也能和手机、电脑上的 LocalSend 互传（每次由接收方确认）。界面有中文、English、日本語，默认跟随系统语言。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
 
-当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）中 Windows 端已接入：顶部岛、托盘菜单、设置、配对和首次引导都走真实核心。
+当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）也已完成：macOS 刘海和 Windows 顶部岛的发送、接收、排队、配对都走真实核心。之后又加了和 LocalSend 互传（设计文档 5.5）和三种界面语言（7.6）。
 
 | 目录 | 内容 |
 | --- | --- |
 | `core/` | Rust 核心 `wormhole-core`：身份、信任库、发现、收发、控制服务（配对、解除配对、接收排队），基于 LocalSend 的 `localsend` crate |
 | `core-ffi/` | 核心的 C 接口（`wormhole.dll` / `libwormhole.a` + `include/wormhole.h`），供两端原生界面调用，见 [core-ffi/README.md](core-ffi/README.md) |
 | `cli/` | 命令行 `whs`，用来在原生界面之前验证核心 |
-| `apps/macos/` | macOS 刘海面板验证原型（假数据） |
+| `apps/macos/` | macOS 应用（SwiftUI + AppKit）：刘海 / 外接屏胶囊、菜单栏菜单、配对、LocalSend 互传，接入核心 |
 | `apps/windows/` | Windows 应用（WPF）：顶部岛、托盘、设置、配对、首次引导，接入核心 |
 | `tools/` | `translations.py`：从代码里列出三种语言（中文、English、日本語）的界面文字对照表，Windows、macOS、核心各用到哪些 |
 
@@ -61,7 +61,7 @@ LocalSend 设备（1.18 及以上）不能配对，但可以直接互传，每�
 
 ## 与设计相比还没做的
 
-- macOS 刘海面板接入核心，以及 macOS 的设置、配对界面。
+- macOS：设置窗口（设置项目前放在菜单栏菜单里）、首次引导里的配对步骤和动画、私钥存入钥匙串。
 - Windows 端：安装包（MSIX 还是 Inno Setup 待定）、私钥存入 DPAPI、双屏和 150% 缩放的实机验证，见 [apps/windows](apps/windows/README.md)。
 
 ## 致谢
