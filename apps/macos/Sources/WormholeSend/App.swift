@@ -91,7 +91,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if case .success(let settings) = core.call("settings.get", as: Settings.self) {
                     self.settings = settings
                 }
-                model.reloadDevices()
+                model.loadLocalSend()
                 log("core \(Core.version) started, language \(Language.current.rawValue)")
                 checkLocalNetwork()
             } catch {
@@ -291,9 +291,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if menu === statusItem?.menu {
             buildMainMenu(menu)
             checkLocalNetwork()
-            // Announce now, so nearby devices have answered by the time the
-            // pointer reaches "配对新设备".
-            core?.call("devices.refresh")
+            // No announcement here: LocalSend devices answer one with
+            // connections they keep for a minute (see IslandModel.localSend).
+            // The pairing submenu asks for nearby devices, which announces.
         } else {
             let nearby = nearbyDevices()
             shownNearby = nearby.map(\.menuKey)

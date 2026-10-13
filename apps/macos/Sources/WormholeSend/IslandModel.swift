@@ -92,6 +92,13 @@ final class IslandModel {
     @ObservationIgnored private var pendingRequests: [Phase] = []
     /// LocalSend senders that asked, for the receive that follows.
     @ObservationIgnored private var requestSenders: [String: Device] = [:]
+    /// The LocalSend devices online, kept up from `device.updated`. Listing
+    /// them (`localsend.list`) announces this device, and a LocalSend device
+    /// answers every announcement packet with a connection it keeps for about
+    /// a minute: from a Mac on two interfaces, enough that a phone's next send
+    /// found the transfer service full and was reset. So they are listed once,
+    /// at start, the way the Windows app does it.
+    @ObservationIgnored private var localSend: [Device] = []
     @ObservationIgnored private var waitingPair: String?
 
     var defaultDevice: Device? { devices.first { $0.isDefault } }
@@ -113,7 +120,6 @@ final class IslandModel {
     func dragStarted(files: [URL]) {
         guard !isBusy else { return }
         cancelTimers()
-        // Also asks LocalSend devices nearby to answer, for the picker.
         reloadDevices()
         dragFiles = files
         dragLabel = FileLabel.of(files)
@@ -237,14 +243,32 @@ final class IslandModel {
 
     // MARK: - Transfers (through the core)
 
-    /// Reloads the paired devices and the LocalSend devices online from the
-    /// core. Listing LocalSend devices also announces this one, so more
-    /// answer shortly (as `device.updated`).
+    /// Lists the LocalSend devices online, which announces this device: once,
+    /// at start (see `localSend`).
+    func loadLocalSend() {
+        guard let core else { return }
+        let nearby = (try? core.call("localsend.list", as: [DeviceInfo].self).get()) ?? []
+        localSend = nearby.map(Device.init(info:))
+        reloadDevices()
+    }
+
+    /// Reloads the paired devices from the core, then the LocalSend devices
+    /// online.
     func reloadDevices() {
         guard let core, case .success(let paired) = core.call("devices.list", as: [DeviceInfo].self) else { return }
-        let nearby = (try? core.call("localsend.list", as: [DeviceInfo].self).get()) ?? []
         let room = max(0, Spec.pickerMaxDevices - paired.count)
-        devices = (paired + nearby.prefix(room)).map(Device.init(info:))
+        devices = paired.map(Device.init(info:)) + localSend.prefix(room)
+    }
+
+    /// A LocalSend device came online or went away.
+    private func localSendUpdated(_ event: CoreEvent) {
+        guard let id = event.id else { return }
+        localSend.removeAll { $0.id == id }
+        if event.online == true {
+            localSend.append(Device(
+                id: id, name: event.alias ?? Self.unknownDevice, symbol: Device.symbol(for: event.deviceType),
+                online: true, isDefault: false, isLocalSend: true))
+        }
     }
 
     private func send(_ files: [URL], to device: Device) {
@@ -302,6 +326,7 @@ final class IslandModel {
     func handle(_ event: CoreEvent) {
         switch event.event {
         case "device.updated":
+            if event.kind == "localsend", event.paired != true { localSendUpdated(event) }
             reloadDevices()
         case "pair.incoming":
             if let id = event.pairId { incomingPairs[id] = event.alias ?? Self.otherDevice }
