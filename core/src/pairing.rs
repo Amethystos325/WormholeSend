@@ -69,21 +69,21 @@ struct Pair {
 pub(crate) fn start(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Result<String> {
     let peer = normalize_fingerprint(fingerprint);
     if peer == inner.identity.fingerprint {
-        bail!("不能和本机自己配对");
+        bail!(tr!("不能和本机自己配对", "Can't pair with this device itself", "このデバイス自身とはペアリングできません"));
     }
     let device = inner
         .discovery
         .device_by_fingerprint(&peer)
-        .context("找不到这台设备，确认它在线")?;
+        .with_context(|| tr!("找不到这台设备，确认它在线", "Can't find this device; make sure it's online", "このデバイスが見つかりません。オンラインか確認してください"))?;
     if Kind::of(device.device.device_model.as_deref()) == Kind::LocalSend {
-        bail!("{} 是 LocalSend 设备，不能配对；可以直接发送，对方确认后接收", device.device.alias);
+        bail!(tr!("{} 是 LocalSend 设备，不能配对；可以直接发送，对方确认后接收", "{} is a LocalSend device and can't pair; send to it directly, and its user accepts", "{} は LocalSend デバイスのためペアリングできません。直接送信でき、相手が承認すると受信されます", device.device.alias));
     }
     let http = device
         .get_best_channel()
         .and_then(|channel| channel.http())
         .cloned()
-        .context("这台设备没有可用的地址")?;
-    let addr = control_addr(&http.host, http.port).context("这台设备的地址无效")?;
+        .with_context(|| tr!("这台设备没有可用的地址", "This device has no usable address", "このデバイスには使用できるアドレスがありません"))?;
+    let addr = control_addr(&http.host, http.port).with_context(|| tr!("这台设备的地址无效", "This device's address is invalid", "このデバイスのアドレスが無効です"))?;
 
     let nonce = random_nonce()?;
     let pair = Pair {
@@ -104,7 +104,7 @@ pub(crate) fn start(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Result<Str
     {
         let mut state = inner.pairings.state.lock().unwrap();
         if state.pairs.values().any(|p| p.peer == peer) {
-            bail!("正在和这台设备配对");
+            bail!(tr!("正在和这台设备配对", "Already pairing with this device", "このデバイスとペアリング中です"));
         }
         state.pairs.insert(id.clone(), pair.clone());
     }
@@ -149,11 +149,11 @@ async fn exchange(inner: &Inner, pair: &Pair, addr: std::net::SocketAddr) -> any
         })
         .await
         .map_err(|err| match err {
-            crate::control::client::ControlError::Status(409, _) => anyhow!("对方正在处理另一个配对请求"),
-            crate::control::client::ControlError::Status(429, _) => anyhow!("对方刚拒绝过配对，请稍后再试"),
+            crate::control::client::ControlError::Status(409, _) => anyhow!(tr!("对方正在处理另一个配对请求", "The other device is handling another pairing request", "相手は別のペアリング要求を処理中です")),
+            crate::control::client::ControlError::Status(429, _) => anyhow!(tr!("对方刚拒绝过配对，请稍后再试", "The other device just declined pairing; try again later", "相手がペアリングを拒否したばかりです。しばらくしてからやり直してください")),
             other => anyhow!("{other}"),
         })?;
-    let peer_nonce = unhex(&response.nonce).filter(|n| n.len() == 32).context("对方的响应无效")?;
+    let peer_nonce = unhex(&response.nonce).filter(|n| n.len() == 32).with_context(|| tr!("对方的响应无效", "The other device's response is invalid", "相手からの応答が無効です"))?;
     client
         .pair_reveal(&PairReveal {
             pair_id: pair.id.clone(),
@@ -172,11 +172,11 @@ pub(crate) fn on_request(
     body: PairRequest,
 ) -> Result<PairRequestResponse, (StatusCode, String)> {
     if peer.fingerprint == inner.identity.fingerprint {
-        return Err((StatusCode::BAD_REQUEST, "不能和自己配对".to_string()));
+        return Err((StatusCode::BAD_REQUEST, tr!("不能和自己配对", "Can't pair with itself", "自分自身とはペアリングできません")));
     }
     let commit = unhex(&body.commit)
         .filter(|c| c.len() == 32)
-        .ok_or((StatusCode::BAD_REQUEST, "commit 无效".to_string()))?;
+        .ok_or((StatusCode::BAD_REQUEST, tr!("commit 无效", "Invalid commit", "commit が無効です")))?;
     let nonce = random_nonce().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let alias = single_line(&body.alias);
     {
@@ -184,10 +184,10 @@ pub(crate) fn on_request(
         let now = Instant::now();
         state.cooldown.retain(|_, until| *until > now);
         if state.cooldown.contains_key(&peer.fingerprint) {
-            return Err((StatusCode::TOO_MANY_REQUESTS, "刚拒绝过配对，请稍后再试".to_string()));
+            return Err((StatusCode::TOO_MANY_REQUESTS, tr!("刚拒绝过配对，请稍后再试", "Pairing was just declined; try again later", "ペアリングを拒否したばかりです。しばらくしてからやり直してください")));
         }
         if state.pairs.values().any(|p| p.peer == peer.fingerprint) || state.pairs.contains_key(&body.pair_id) {
-            return Err((StatusCode::CONFLICT, "已有待处理的配对请求".to_string()));
+            return Err((StatusCode::CONFLICT, tr!("已有待处理的配对请求", "A pairing request is already waiting", "保留中のペアリング要求があります")));
         }
         state.pairs.insert(
             body.pair_id.clone(),
@@ -222,10 +222,10 @@ pub(crate) fn on_reveal(
     peer: &Peer,
     body: PairReveal,
 ) -> Result<serde_json::Value, (StatusCode, String)> {
-    let not_found = || (StatusCode::NOT_FOUND, "没有这个配对请求".to_string());
+    let not_found = || (StatusCode::NOT_FOUND, tr!("没有这个配对请求", "No such pairing request", "このペアリング要求はありません"));
     let their_nonce = unhex(&body.nonce)
         .filter(|n| n.len() == 32)
-        .ok_or((StatusCode::BAD_REQUEST, "nonce 无效".to_string()))?;
+        .ok_or((StatusCode::BAD_REQUEST, tr!("nonce 无效", "Invalid nonce", "nonce が無効です")))?;
     let mut state = inner.pairings.state.lock().unwrap();
     let pair = state
         .pairs
@@ -240,9 +240,9 @@ pub(crate) fn on_reveal(
             device_id: pair.peer,
             alias: pair.alias,
             ok: false,
-            reason: Some("校验失败，配对已取消".to_string()),
+            reason: Some(tr!("校验失败，配对已取消", "Verification failed; pairing cancelled", "検証に失敗したため、ペアリングを中止しました")),
         });
-        return Err((StatusCode::BAD_REQUEST, "nonce 与 commit 不符".to_string()));
+        return Err((StatusCode::BAD_REQUEST, tr!("nonce 与 commit 不符", "The nonce doesn't match the commit", "nonce が commit と一致しません")));
     }
     // The initiator's fingerprint comes first.
     let code = code(&pair.peer, &inner.identity.fingerprint, &their_nonce, &pair.nonce);
@@ -268,12 +268,12 @@ pub(crate) fn on_confirm(
         .pairs
         .get_mut(&body.pair_id)
         .filter(|p| p.peer == peer.fingerprint && p.code.is_some())
-        .ok_or((StatusCode::NOT_FOUND, "没有这个配对请求".to_string()))?;
+        .ok_or((StatusCode::NOT_FOUND, tr!("没有这个配对请求", "No such pairing request", "このペアリング要求はありません")))?;
     pair.remote = Some(body.accept);
     if !body.accept {
         let pair = state.pairs.remove(&body.pair_id).expect("pair exists");
         drop(state);
-        inner.emit(result(&pair, false, Some("对方拒绝了配对")));
+        inner.emit(result(&pair, false, Some(&tr!("对方拒绝了配对", "The other device declined", "相手がペアリングを拒否しました"))));
         return Ok(serde_json::Value::Null);
     }
     finish_if_confirmed(inner, &mut state, &body.pair_id);
@@ -290,7 +290,7 @@ pub(crate) fn confirm(inner: &Arc<Inner>, pair_id: &str, accept: bool) -> anyhow
             .pairs
             .get_mut(pair_id)
             .filter(|p| p.code.is_some() && p.local.is_none())
-            .context("没有等待确认的配对")?;
+            .with_context(|| tr!("没有等待确认的配对", "No pairing is waiting for confirmation", "確認待ちのペアリングはありません"))?;
         pair.local = Some(accept);
         let pair = pair.clone();
         if !accept {
@@ -320,7 +320,7 @@ pub(crate) fn confirm(inner: &Arc<Inner>, pair_id: &str, accept: bool) -> anyhow
         if !accept {
             // Reported only after the other side was told, so a short-lived
             // process (whs pair) doesn't exit before the decline reaches it.
-            inner.emit(result(&pair, false, Some("已拒绝")));
+            inner.emit(result(&pair, false, Some(&tr!("已拒绝", "Declined", "拒否しました"))));
             return;
         }
         let mut state = inner.pairings.state.lock().unwrap();
@@ -329,7 +329,7 @@ pub(crate) fn confirm(inner: &Arc<Inner>, pair_id: &str, accept: bool) -> anyhow
             finish_if_confirmed(&inner, &mut state, &pair.id);
         } else if state.pairs.remove(&pair.id).is_some() {
             drop(state);
-            inner.emit(result(&pair, false, Some("无法联系对方")));
+            inner.emit(result(&pair, false, Some(&tr!("无法联系对方", "Can't reach the other device", "相手に接続できません"))));
         }
     });
     Ok(())
@@ -355,7 +355,7 @@ fn finish_if_confirmed(inner: &Inner, state: &mut State, pair_id: &str) {
     remove_pending(&inner.home, &pair.peer);
     inner.emit(match saved {
         Ok(()) => result(&pair, true, None),
-        Err(err) => result(&pair, false, Some(&format!("无法保存：{err:#}"))),
+        Err(err) => result(&pair, false, Some(&tr!("无法保存：{err:#}", "Can't save: {err:#}", "保存できません：{err:#}"))),
     });
 }
 
@@ -365,7 +365,7 @@ fn expire_later(inner: &Arc<Inner>, pair_id: &str) {
         tokio::time::sleep(CODE_TTL).await;
         let expired = inner.pairings.state.lock().unwrap().pairs.remove(&pair_id);
         if let Some(pair) = expired {
-            inner.emit(result(&pair, false, Some("配对已超时")));
+            inner.emit(result(&pair, false, Some(&tr!("配对已超时", "Pairing timed out", "ペアリングがタイムアウトしました"))));
         }
     });
 }

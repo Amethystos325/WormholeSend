@@ -7,6 +7,8 @@
 //! store. A LocalSend device, which cannot pair, waits while the user is
 //! asked. Everything else is declined.
 
+#[macro_use]
+pub mod i18n;
 pub mod config;
 mod control;
 pub mod event;

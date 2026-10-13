@@ -45,7 +45,8 @@ const char *wh_version(void);
  * directory; by default %APPDATA%\WormholeSend or ~/Library/Application
  * Support/WormholeSend), `port` (default from settings.json, else 53320),
  * `portFallback` (move to the next free port pair when taken; false for the
- * apps), `alias` and `saveDir` (for this run instead of the saved settings).
+ * apps), `alias` and `saveDir` (for this run instead of the saved settings),
+ * `language` (of the messages: "en", "zh" or "ja"; Chinese if not given).
  *
  * Returns `{"ok":true,"result":<settings.get>}` and sets `*core_out`, or
  * `{"ok":false,"error":"…"}` and sets `*core_out` to NULL. Free the string
@@ -73,6 +74,7 @@ char *wh_start(const char *config_json,
  * `localsend.list`, `send` (deviceId, paths), `transfer.cancel`
  * (transferId), `transfer.retry` (transferId), `pair.start` (deviceId),
  * `pair.confirm` (pairId, accept), `receive.respond` (requestId, accept),
+ * `language.set` (language),
  * `device.unpair` (deviceId), `device.setDefault` (deviceId),
  * `settings.get`, `settings.set` (alias?, saveDir?). core-ffi/README.md
  * describes their results.

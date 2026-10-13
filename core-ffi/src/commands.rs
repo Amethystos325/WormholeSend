@@ -6,23 +6,29 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use wormhole_core::{Kind, Node};
+use wormhole_core::i18n::{self, Lang};
+use wormhole_core::{Kind, Node, tr};
 use wormhole_core::config::Settings;
 use wormhole_core::identity::Identity;
 
 pub(crate) fn run(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value> {
-    let name = command.get("command").and_then(Value::as_str).context("命令缺少 command 字段")?;
+    let name = command.get("command").and_then(Value::as_str).with_context(|| tr!("命令缺少 command 字段", "The command has no command field", "コマンドに command フィールドがありません"))?;
     match name {
         "settings.get" => return settings(shared),
         "settings.set" => return set_settings(shared, command),
+        // Messages made from now on use it; nothing restarts.
+        "language.set" => {
+            i18n::set(Lang::parse(string(command, "language")?));
+            return Ok(Value::Null);
+        }
         _ => {}
     }
-    let restarting = || anyhow!("正在重新启动服务，请稍后再试");
+    let restarting = || anyhow!(tr!("正在重新启动服务，请稍后再试", "The services are restarting; try again in a moment", "サービスを再起動中です。しばらくしてからやり直してください"));
     if shared.restarting.load(Ordering::SeqCst) {
         return Err(restarting());
     }
     let slot = shared.node.try_read().map_err(|_| restarting())?;
-    let node = slot.as_ref().context("服务没有在运行")?;
+    let node = slot.as_ref().with_context(|| tr!("服务没有在运行", "The services aren't running", "サービスが動いていません"))?;
     // Commands that spawn work need the runtime.
     let _runtime = shared.handle.enter();
     match name {
@@ -59,47 +65,47 @@ pub(crate) fn run(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value
             let paths: Vec<PathBuf> = command
                 .get("paths")
                 .and_then(Value::as_array)
-                .context("缺少 paths")?
+                .with_context(|| tr!("缺少 paths", "paths is missing", "paths がありません"))?
                 .iter()
-                .map(|p| p.as_str().map(PathBuf::from).context("paths 只能包含字符串"))
+                .map(|p| p.as_str().map(PathBuf::from).with_context(|| tr!("paths 只能包含字符串", "paths can only hold strings", "paths には文字列しか入れられません")))
                 .collect::<anyhow::Result<_>>()?;
             Ok(json!(send(shared, node, device, paths)?))
         }
         "transfer.cancel" => Ok(json!(node.cancel(string(command, "transferId")?))),
         "transfer.retry" => {
             let id = string(command, "transferId")?;
-            let (device, paths) = shared.sends.lock().unwrap().get(id).cloned().context("找不到这次发送")?;
+            let (device, paths) = shared.sends.lock().unwrap().get(id).cloned().with_context(|| tr!("找不到这次发送", "No such send", "この送信が見つかりません"))?;
             Ok(json!(send(shared, node, &device, paths)?))
         }
         "receive.respond" => {
             let id = string(command, "requestId")?;
-            let accept = command.get("accept").and_then(Value::as_bool).context("缺少 accept")?;
+            let accept = command.get("accept").and_then(Value::as_bool).with_context(|| tr!("缺少 accept", "accept is missing", "accept がありません"))?;
             shared.active.lock().unwrap().remove(id);
             Ok(json!(node.respond_receive(id, accept)))
         }
         "pair.start" => Ok(json!(node.pair(string(command, "deviceId")?)?)),
         "pair.confirm" => {
-            let accept = command.get("accept").and_then(Value::as_bool).context("缺少 accept")?;
+            let accept = command.get("accept").and_then(Value::as_bool).with_context(|| tr!("缺少 accept", "accept is missing", "accept がありません"))?;
             node.pair_confirm(string(command, "pairId")?, accept)?;
             Ok(Value::Null)
         }
         "device.unpair" => Ok(json!({ "wasPaired": node.unpair_in_background(string(command, "deviceId")?)? })),
         "device.setDefault" => {
             if !node.set_default(string(command, "deviceId")?)? {
-                bail!("这台设备没有配对");
+                bail!(tr!("这台设备没有配对", "This device isn't paired", "このデバイスはペアリングされていません"));
             }
             Ok(Value::Null)
         }
-        _ => bail!("未知命令：{name}"),
+        _ => bail!(tr!("未知命令：{name}", "Unknown command: {name}", "不明なコマンド：{name}")),
     }
 }
 
 fn send(shared: &Shared, node: &Node, device: &str, paths: Vec<PathBuf>) -> anyhow::Result<String> {
     if paths.is_empty() {
-        bail!("没有要发送的文件");
+        bail!(tr!("没有要发送的文件", "Nothing to send", "送信するファイルがありません"));
     }
     if let Some(missing) = paths.iter().find(|p| !p.exists()) {
-        bail!("找不到 {}", missing.display());
+        bail!(tr!("找不到 {}", "Can't find {}", "{} が見つかりません", missing.display()));
     }
     let id = node.send(device, paths.clone());
     shared.active.lock().unwrap().insert(id.clone());
@@ -144,16 +150,16 @@ fn set_settings(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value> 
     if let Some(alias) = alias
         && (alias.is_empty() || alias.chars().count() > 64)
     {
-        bail!("设备名称不能为空，最多 64 个字");
+        bail!(tr!("设备名称不能为空，最多 64 个字", "The device name can't be empty, and has 64 characters at most", "デバイス名は空にできません。64 文字までです"));
     }
     if let Some(dir) = &save_dir {
         if !dir.is_absolute() {
-            bail!("保存位置要写完整路径");
+            bail!(tr!("保存位置要写完整路径", "The save location needs a full path", "保存先はフルパスで指定してください"));
         }
-        std::fs::create_dir_all(dir).with_context(|| format!("无法使用这个文件夹：{}", dir.display()))?;
+        std::fs::create_dir_all(dir).with_context(|| tr!("无法使用这个文件夹：{}", "Can't use this folder: {}", "このフォルダは使用できません：{}", dir.display()))?;
     }
     if !shared.active.lock().unwrap().is_empty() {
-        bail!("正在传输文件，结束后再修改设置");
+        bail!(tr!("正在传输文件，结束后再修改设置", "Files are being transferred; change the settings when they're done", "ファイルを転送中です。終わってから設定を変更してください"));
     }
 
     let home = {
@@ -183,5 +189,5 @@ fn set_settings(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value> 
 }
 
 fn string<'a>(command: &'a Value, field: &str) -> anyhow::Result<&'a str> {
-    command.get(field).and_then(Value::as_str).with_context(|| format!("缺少 {field}"))
+    command.get(field).and_then(Value::as_str).with_context(|| tr!("缺少 {field}", "{field} is missing", "{field} がありません"))
 }

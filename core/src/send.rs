@@ -142,7 +142,7 @@ pub(crate) fn spawn(inner: Arc<Inner>, transfer_id: String, fingerprint: String,
             .map_or_else(|| short_fingerprint(&fingerprint).to_string(), |t| t.alias.clone());
         let outcome = match target {
             Some(target) => run(&inner, &transfer_id, &target, paths, &cancel).await,
-            None => Outcome::fail(TransferStatus::Rejected, "目标设备没有配对"),
+            None => Outcome::fail(TransferStatus::Rejected, tr!("目标设备没有配对", "This device isn't paired", "このデバイスはペアリングされていません")),
         };
         inner.sends.lock().unwrap().remove(&transfer_id);
         inner.emit(CoreEvent::TransferFinished {
@@ -169,7 +169,7 @@ async fn run(
     let fingerprint = &device.fingerprint;
     let (files, sources, total) = collect_files(inner, &paths);
     if files.is_empty() {
-        return Outcome::fail(TransferStatus::Failed, "没有可发送的文件");
+        return Outcome::fail(TransferStatus::Failed, tr!("没有可发送的文件", "Nothing to send", "送信できるファイルがありません"));
     }
 
     let http = tokio::select! {
@@ -177,7 +177,7 @@ async fn run(
         _ = cancel.token.cancelled() => return Outcome::cancelled(),
     };
     let Some(http) = http else {
-        return Outcome::fail(TransferStatus::Offline, format!("{} 不在线", device.alias));
+        return Outcome::fail(TransferStatus::Offline, tr!("{} 不在线", "{} is offline", "{} はオフラインです", device.alias));
     };
     if let Some(send) = inner.sends.lock().unwrap().get_mut(transfer_id) {
         send.host = http.host.clone();
@@ -230,7 +230,7 @@ async fn run(
         None,
     ) {
         Ok(client) => Arc::new(client),
-        Err(err) => return Outcome::fail(TransferStatus::Failed, format!("无法创建连接：{err}")),
+        Err(err) => return Outcome::fail(TransferStatus::Failed, tr!("无法创建连接：{err}", "Can't connect: {err}", "接続できません：{err}")),
     };
     let protocol = device.protocol;
 
@@ -270,24 +270,24 @@ async fn run(
             release();
             return match err.status {
                 403 if !device.paired => {
-                    Outcome::fail(TransferStatus::Declined, format!("{} 拒绝了接收", device.alias))
+                    Outcome::fail(TransferStatus::Declined, tr!("{} 拒绝了接收", "{} declined", "{} が受信を拒否しました", device.alias))
                 }
                 403 => {
                     mark_needs_repair(inner, fingerprint);
                     Outcome::fail(
                         TransferStatus::Rejected,
-                        format!("{} 没有信任本机（未配对或已解除配对）", device.alias),
+                        tr!("{} 没有信任本机（未配对或已解除配对）", "{} doesn't trust this device (not paired, or unpaired)", "{} はこのデバイスを信頼していません（未ペアリングまたはペアリング解除済み）", device.alias),
                     )
                 }
                 409 => Outcome::fail(
                     TransferStatus::Busy,
-                    format!("{} 正在接收其他文件", device.alias),
+                    tr!("{} 正在接收其他文件", "{} is receiving other files", "{} は別のファイルを受信中です", device.alias),
                 ),
                 401 => Outcome::fail(
                     TransferStatus::Failed,
-                    format!("{} 开启了 PIN，暂不支持", device.alias),
+                    tr!("{} 开启了 PIN，暂不支持", "{} asks for a PIN, which isn't supported yet", "{} は PIN を必要としていますが、まだ対応していません", device.alias),
                 ),
-                status => Outcome::fail(TransferStatus::Failed, format!("请求失败（HTTP {status}）")),
+                status => Outcome::fail(TransferStatus::Failed, tr!("请求失败（HTTP {status}）", "The request failed (HTTP {status})", "リクエストに失敗しました（HTTP {status}）")),
             };
         }
         Err(err) => {
@@ -296,7 +296,7 @@ async fn run(
         }
     };
     let Some(response) = prepared.response else {
-        return Outcome::fail(TransferStatus::Failed, "对方没有接收任何文件");
+        return Outcome::fail(TransferStatus::Failed, tr!("对方没有接收任何文件", "The other device accepted no files", "相手はファイルを受け取りませんでした"));
     };
     if response.session_id.is_empty()
         || response.files.is_empty()
@@ -305,7 +305,7 @@ async fn run(
             .iter()
             .any(|(id, token)| !files.contains_key(id) || token.is_empty())
     {
-        return Outcome::fail(TransferStatus::Failed, "对方的响应无效");
+        return Outcome::fail(TransferStatus::Failed, tr!("对方的响应无效", "The other device's response is invalid", "相手からの応答が無効です"));
     }
     if let Some(send) = inner.sends.lock().unwrap().get_mut(transfer_id) {
         send.session_id = Some(response.session_id.clone());
@@ -405,7 +405,7 @@ async fn run(
             // cancel counts as the cancellation too.
             Err(_) if cancel.token.is_cancelled() => {
                 if cancel.by_peer.load(Ordering::Relaxed) {
-                    outcome.error = Some(format!("{} 取消了接收", device.alias));
+                    outcome.error = Some(tr!("{} 取消了接收", "{} cancelled", "{} が受信をキャンセルしました", device.alias));
                 }
                 outcome.status = TransferStatus::Cancelled;
                 break;
@@ -415,7 +415,7 @@ async fn run(
                     .cancel(protocol, &http.host, http.port, &response.session_id)
                     .await;
                 outcome.status = TransferStatus::Failed;
-                outcome.error = Some(format!("{} 发送失败：{err}", file.file_name));
+                outcome.error = Some(tr!("{} 发送失败：{err}", "Couldn't send {}: {err}", "{} の送信に失敗しました：{err}", file.file_name));
                 break;
             }
         }
@@ -460,13 +460,13 @@ async fn wait_turn(
             mark_needs_repair(inner, &device.fingerprint);
             return Err(Outcome::fail(
                 TransferStatus::Rejected,
-                format!("{} 没有信任本机（未配对或已解除配对）", device.alias),
+                tr!("{} 没有信任本机（未配对或已解除配对）", "{} doesn't trust this device (not paired, or unpaired)", "{} はこのデバイスを信頼していません（未ペアリングまたはペアリング解除済み）", device.alias),
             ));
         }
         Err(ControlError::Status(503, _)) => {
             return Err(Outcome::fail(
                 TransferStatus::Busy,
-                format!("{} 的排队人数已满", device.alias),
+                tr!("{} 的排队人数已满", "{}'s queue is full", "{} の待ち行列がいっぱいです", device.alias),
             ));
         }
         Err(_) => return Ok(None),
@@ -488,7 +488,7 @@ async fn wait_turn(
                 return Err(Outcome::cancelled());
             }
         };
-        status = next.map_err(|err| Outcome::fail(TransferStatus::Failed, format!("排队时失去连接：{err}")))?;
+        status = next.map_err(|err| Outcome::fail(TransferStatus::Failed, tr!("排队时失去连接：{err}", "Lost the connection while queued: {err}", "順番待ち中に接続が切れました：{err}")))?;
     }
     Ok(Some(status.ticket))
 }
@@ -558,7 +558,7 @@ fn collect_files(
             Ok(metadata) if metadata.is_file() => metadata,
             _ => {
                 inner.emit(CoreEvent::Error {
-                    message: format!("跳过无法读取的文件：{}", path.display()),
+                    message: tr!("跳过无法读取的文件：{}", "Skipped a file that can't be read: {}", "読み取れないファイルをスキップしました：{}", path.display()),
                 });
                 continue;
             }
@@ -593,7 +593,7 @@ fn expand(inner: &Inner, path: &Path) -> Vec<(PathBuf, String)> {
     }
     if !path.is_dir() {
         inner.emit(CoreEvent::Error {
-            message: format!("跳过不存在的路径：{}", path.display()),
+            message: tr!("跳过不存在的路径：{}", "Skipped a path that doesn't exist: {}", "存在しないパスをスキップしました：{}", path.display()),
         });
         return Vec::new();
     }
@@ -616,7 +616,7 @@ fn expand(inner: &Inner, path: &Path) -> Vec<(PathBuf, String)> {
                 Ok(entry) => entry,
                 Err(err) => {
                     inner.emit(CoreEvent::Error {
-                        message: format!("跳过无法读取的路径：{err}"),
+                        message: tr!("跳过无法读取的路径：{err}", "Skipped a path that can't be read: {err}", "読み取れないパスをスキップしました：{err}"),
                     });
                     return None;
                 }

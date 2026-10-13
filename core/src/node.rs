@@ -168,7 +168,7 @@ impl Node {
         );
         if let Some(err) = discovery.multicast_error() {
             let _ = events_tx.send(CoreEvent::Error {
-                message: format!("组播不可用，只能通过已知地址找到设备：{err:#}"),
+                message: tr!("组播不可用，只能通过已知地址找到设备：{err:#}", "Multicast is unavailable; devices can only be found at known addresses: {err:#}", "マルチキャストを利用できません。既知のアドレスでのみデバイスを検出できます：{err:#}"),
             });
         }
 
@@ -648,18 +648,18 @@ async fn bind_ports(
                 last_error = Some(anyhow::Error::from(err));
                 continue;
             }
-            Err(err) => return Err(err).context(format!("无法监听控制端口 {}", port + 1)),
+            Err(err) => return Err(err).with_context(|| tr!("无法监听控制端口 {}", "Can't listen on control port {}", "制御ポート {} で待ち受けできません", port + 1)),
         };
         match start_server(identity, port).await {
             Ok((server, rx, stop)) => return Ok((server, rx, stop, control)),
             Err(err) if is_addr_in_use(&err) => last_error = Some(err),
-            Err(err) => return Err(err).context("无法启动传输服务"),
+            Err(err) => return Err(err).with_context(|| tr!("无法启动传输服务", "Can't start the transfer service", "転送サービスを開始できません")),
         }
     }
     let err = last_error.unwrap_or_else(|| anyhow::anyhow!("no free port"));
     Err(err).context(match fallback {
-        true => format!("端口 {base} 起都被占用"),
-        false => format!("端口 {base} 或 {} 已被占用（可能已有一个 whs receive 在运行）", base + 1),
+        true => tr!("端口 {base} 起都被占用", "Ports from {base} on are all in use", "ポート {base} 以降はすべて使用中です"),
+        false => tr!("端口 {base} 或 {} 已被占用（可能已有一个 whs receive 在运行）", "Port {base} or {} is in use (maybe a whs receive is running)", "ポート {base} または {} は使用中です（whs receive が動いている可能性があります）", base + 1),
     })
 }
 

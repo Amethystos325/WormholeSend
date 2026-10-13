@@ -19,7 +19,9 @@ cargo build -p wormhole-ffi --release
 | `wh_free_string(string)` | Frees what `wh_start` and `wh_command` return |
 | `wh_stop(core)` | Stops and frees the core; no events after it returns |
 
-`config_json` (all optional): `home` (data directory), `port` (transfer port; control is port + 1), `portFallback` (false in the apps), `alias` and `saveDir` (for this run only, not saved).
+`config_json` (all optional): `home` (data directory), `port` (transfer port; control is port + 1), `portFallback` (false in the apps), `alias` and `saveDir` (for this run only, not saved), `language` (of the messages: `"en"`, `"zh"` or `"ja"`, or a language tag such as `"zh-Hans-CN"`; Chinese if not given).
+
+What the core says to the user, in errors, `pair.result` reasons, `transfer.finished` errors, `receive.request` labels and `error` events, is in that language (`core/src/i18n.rs`; `tr!` holds each text in all three). It is the process's, not one core's.
 
 Error messages are Chinese and can be shown to the user as they are.
 
@@ -50,6 +52,7 @@ The events and their fields are the table in the design doc (section 4.2), from 
 | `device.unpair` | `deviceId` | `{"wasPaired": bool}`; the other device is told in the background, or when it is next seen |
 | `device.setDefault` | `deviceId` | `null` |
 | `settings.get` | | `{alias, saveDir, port, fingerprint, home}` |
+| `language.set` | `language` | `null`; messages from now on are in it, nothing restarts |
 | `settings.set` | `alias?`, `saveDir?` | The new settings plus `"restarting": true`. Saved at once; the services restart in the background (the name is in every announcement), and commands answer "正在重新启动服务" for about a second. Refused while a transfer is running |
 
 An incoming pairing request arrives as `pair.incoming`, then `pair.code`; answer with `pair.confirm`.

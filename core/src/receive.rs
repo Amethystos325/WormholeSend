@@ -4,6 +4,7 @@
 //! LocalSend device, which cannot pair, waits while this device's user is
 //! asked; any other request is declined (HTTP 403).
 
+use crate::i18n::Lang;
 use crate::event::{CoreEvent, Direction, TransferStatus};
 use crate::node::{Inner, Kind, type_name};
 use crate::save_path::receive_path;
@@ -130,7 +131,7 @@ impl Receiver {
             DiscoveryEvent::Discovered { device } => self.inner.on_device_seen(&device, true),
             DiscoveryEvent::Updated { device } => self.inner.on_device_seen(&device, false),
             DiscoveryEvent::MulticastFailed => self.inner.emit(CoreEvent::Error {
-                message: "组播已停止，只能通过已知地址找到设备".to_string(),
+                message: tr!("组播已停止，只能通过已知地址找到设备", "Multicast stopped; devices can only be found at known addresses", "マルチキャストが停止しました。既知のアドレスでのみデバイスを検出できます"),
             }),
         }
     }
@@ -169,7 +170,7 @@ impl Receiver {
                     let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
                     self.inner.emit(match trusted {
                         true => CoreEvent::Error {
-                            message: format!("{alias} 没有排队就发送，已拒绝"),
+                            message: tr!("{alias} 没有排队就发送，已拒绝", "{alias} sent without queueing; declined", "{alias} が順番待ちをせずに送信したため拒否しました"),
                         },
                         false => CoreEvent::ReceiveRejected {
                             device_id: fingerprint,
@@ -220,7 +221,7 @@ impl Receiver {
                 }
             }
             ServerEventV2::ListenerFailed { error } => self.inner.emit(CoreEvent::Error {
-                message: format!("传输服务已停止：{error}"),
+                message: tr!("传输服务已停止：{error}", "The transfer service stopped: {error}", "転送サービスが停止しました：{error}"),
             }),
         }
     }
@@ -245,8 +246,10 @@ impl Receiver {
             self.inner.queue.session_ended(&fingerprint);
             let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
             self.inner.emit(CoreEvent::Error {
-                message: format!(
+                message: tr!(
                     "无法创建保存目录 {}：{err}",
+                    "Can't create the save folder {}: {err}",
+                    "保存先フォルダ {} を作成できません：{err}",
                     self.inner.settings.save_dir.display()
                 ),
             });
@@ -308,7 +311,7 @@ impl Receiver {
             alias: alias.clone(),
             device_type: device_type.as_ref().map(type_name),
             label: match text {
-                Some(_) => "一段文字".to_string(),
+                Some(_) => tr!("一段文字", "Text message", "テキストメッセージ"),
                 None => label(&files),
             },
             files: files.len(),
@@ -395,7 +398,7 @@ impl Receiver {
             && let Err(err) = std::fs::create_dir_all(parent)
         {
             self.inner.emit(CoreEvent::Error {
-                message: format!("无法创建目录 {}：{err}", parent.display()),
+                message: tr!("无法创建目录 {}：{err}", "Can't create the folder {}: {err}", "フォルダ {} を作成できません：{err}", parent.display()),
             });
             return;
         }
@@ -510,7 +513,7 @@ impl Receiver {
         let (status, error) = match session.ended.unwrap() {
             SessionEndReasonV2::Cancelled => {
                 self.delete_unfinished(&session);
-                (TransferStatus::Cancelled, Some("发送方取消了传输".to_string()))
+                (TransferStatus::Cancelled, Some(tr!("发送方取消了传输", "The sender cancelled the transfer", "送信者が転送をキャンセルしました")))
             }
             SessionEndReasonV2::Finished
                 if session.failed.is_empty() && session.finished.len() == session.files.len() =>
@@ -520,7 +523,10 @@ impl Receiver {
             SessionEndReasonV2::Finished => {
                 self.delete_unfinished(&session);
                 let failed = session.files.len() - session.finished.len();
-                let mut error = format!("{failed} 个文件没有收到");
+                let mut error = match failed {
+                    1 => tr!("1 个文件没有收到", "1 file wasn't received", "1 個のファイルを受信できませんでした"),
+                    _ => tr!("{failed} 个文件没有收到", "{failed} files weren't received", "{failed} 個のファイルを受信できませんでした"),
+                };
                 if let Some(reason) = session.failed.values().next() {
                     error.push_str(&format!("（{reason}）"));
                 }
@@ -604,10 +610,17 @@ fn message_text(files: &HashMap<String, FileDto>) -> Option<String> {
     file.preview.clone().filter(|_| text)
 }
 
-/// What a request offers, as the shells label a drag: "IMG_0001.jpg",
-/// "文件夹 照片", "IMG_0001.jpg 等 3 个文件", "a 等 2 个文件夹" or
-/// "a 等 3 个文件或文件夹", by the top-level entries.
+/// What a request offers, as the shells label a drag, by the top-level
+/// entries: "IMG_0001.jpg", "文件夹 照片", "IMG_0001.jpg 等 3 个文件",
+/// "a 等 2 个文件夹" or "a 等 3 个文件或文件夹"; "照片 (folder)",
+/// "IMG_0001.jpg and 2 more files", "a and 1 more folder", "a and 2 more
+/// items"; "フォルダ「照片」", "IMG_0001.jpg など 3 個のファイル", "a など
+/// 2 個のフォルダ", "a など 3 個の項目".
 fn label(files: &HashMap<String, FileDto>) -> String {
+    label_in(crate::i18n::current(), files)
+}
+
+fn label_in(lang: Lang, files: &HashMap<String, FileDto>) -> String {
     // Top-level name → whether it is a folder.
     let mut entries: BTreeMap<String, bool> = BTreeMap::new();
     for file in files.values() {
@@ -621,19 +634,32 @@ fn label(files: &HashMap<String, FileDto>) -> String {
         }
     }
     let Some((name, &folder)) = entries.iter().next() else {
-        return "文件".to_string();
+        return match lang {
+            Lang::Zh => "文件",
+            Lang::En => "Files",
+            Lang::Ja => "ファイル",
+        }
+        .to_string();
     };
     let folders = entries.values().filter(|folder| **folder).count();
-    match entries.len() {
-        1 if folder => format!("文件夹 {name}"),
-        1 => name.clone(),
-        count => {
-            let kind = match folders {
-                0 => "文件",
-                n if n == count => "文件夹",
-                _ => "文件或文件夹",
-            };
-            format!("{name} 等 {count} 个{kind}")
+    let count = entries.len();
+    // Files, folders, or both.
+    let kind = match folders {
+        0 => 0,
+        n if n == count => 1,
+        _ => 2,
+    };
+    match (lang, count) {
+        (Lang::Zh, 1) if folder => format!("文件夹 {name}"),
+        (Lang::En, 1) if folder => format!("{name} (folder)"),
+        (Lang::Ja, 1) if folder => format!("フォルダ「{name}」"),
+        (_, 1) => name.clone(),
+        (Lang::Zh, _) => format!("{name} 等 {count} 个{}", ["文件", "文件夹", "文件或文件夹"][kind]),
+        (Lang::Ja, _) => format!("{name} など {count} 個の{}", ["ファイル", "フォルダ", "項目"][kind]),
+        (Lang::En, _) => {
+            let more = count - 1;
+            let plural = if more == 1 { "" } else { "s" };
+            format!("{name} and {more} more {}{plural}", ["file", "folder", "item"][kind])
         }
     }
 }
@@ -681,6 +707,17 @@ mod tests {
         assert_eq!(label(&files(&["照片/a.jpg", "照片/b/c.jpg"])), "文件夹 照片");
         assert_eq!(label(&files(&["b/x", "a/y"])), "a 等 2 个文件夹");
         assert_eq!(label(&files(&["b/x", "a.txt"])), "a.txt 等 2 个文件或文件夹");
+        let en = |names: &[&str]| label_in(Lang::En, &files(names));
+        assert_eq!(en(&["IMG_2.jpg"]), "IMG_2.jpg");
+        assert_eq!(en(&["照片/a.jpg"]), "照片 (folder)");
+        assert_eq!(en(&["b.jpg", "a.jpg"]), "a.jpg and 1 more file");
+        assert_eq!(en(&["c/x", "b/x", "a/y"]), "a and 2 more folders");
+        assert_eq!(en(&["b/x", "a.txt"]), "a.txt and 1 more item");
+        let ja = |names: &[&str]| label_in(Lang::Ja, &files(names));
+        assert_eq!(ja(&["照片/a.jpg"]), "フォルダ「照片」");
+        assert_eq!(ja(&["b.jpg", "a.jpg", "c.jpg"]), "a.jpg など 3 個のファイル");
+        assert_eq!(ja(&["b/x", "a/y"]), "a など 2 個のフォルダ");
+        assert_eq!(ja(&["b/x", "a.txt"]), "a.txt など 2 個の項目");
     }
 
     #[test]

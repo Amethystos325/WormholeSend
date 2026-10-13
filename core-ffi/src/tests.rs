@@ -9,6 +9,10 @@ use std::time::{Duration, Instant};
 /// Events as the app gets them: the thread they arrived on, and the JSON.
 type Events = Receiver<(String, Value)>;
 
+/// The language is the whole process's: tests that look at messages take
+/// turns.
+static MESSAGES: Mutex<()> = Mutex::new(());
+
 unsafe extern "C" fn collect(ctx: *mut c_void, json: *const c_char) {
     let sender = unsafe { &*(ctx as *const mpsc::Sender<(String, Value)>) };
     let text = unsafe { CStr::from_ptr(json) }.to_str().unwrap();
@@ -79,6 +83,7 @@ fn version_is_a_static_string() {
 
 #[test]
 fn failures_come_back_as_json() {
+    let _messages = MESSAGES.lock().unwrap_or_else(|e| e.into_inner());
     let response = take(unsafe { wh_command(std::ptr::null(), c"{}".as_ptr()) });
     assert_eq!(response, json!({ "ok": false, "error": "核心没有启动" }));
 
@@ -92,6 +97,7 @@ fn failures_come_back_as_json() {
 
 #[test]
 fn pair_send_retry_rename_and_unpair() {
+    let _messages = MESSAGES.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().unwrap();
     let path = |name: &str| dir.path().join(name);
     let a = Core::start(&path("a"), 53460, "FfiA", &path("a-recv"));
@@ -167,4 +173,25 @@ fn pair_send_retry_rename_and_unpair() {
 
     a.stop();
     b.stop();
+}
+
+#[test]
+fn messages_follow_the_language() {
+    let _messages = MESSAGES.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let (sender, _events) = mpsc::channel::<(String, Value)>();
+    let sender = Box::new(sender);
+    let config = json!({ "home": dir.path().join("home"), "port": 53480, "portFallback": true, "language": "en-US" });
+    let config = CString::new(config.to_string()).unwrap();
+    let mut pointer = std::ptr::null_mut();
+    let ctx = &*sender as *const mpsc::Sender<(String, Value)> as *mut c_void;
+    assert_eq!(take(unsafe { wh_start(config.as_ptr(), Some(collect), ctx, &mut pointer) })["ok"], true);
+    let core = Core { core: pointer, events: _events, _sender: sender };
+
+    assert_eq!(core.run(json!({ "command": "nope" }))["error"], "Unknown command: nope");
+    core.ok(json!({ "command": "language.set", "language": "ja" }));
+    assert_eq!(core.run(json!({ "command": "nope" }))["error"], "不明なコマンド：nope");
+    core.ok(json!({ "command": "language.set", "language": "zh-Hans" }));
+    assert_eq!(core.run(json!({ "command": "nope" }))["error"], "未知命令：nope");
+    core.stop();
 }

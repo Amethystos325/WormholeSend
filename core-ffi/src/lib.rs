@@ -16,6 +16,8 @@ use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::thread::JoinHandle;
 use wormhole_core::config::{self, Settings};
 use wormhole_core::event::CoreEvent;
+use wormhole_core::i18n::{self, Lang};
+use wormhole_core::tr;
 use wormhole_core::{Node, NodeOptions};
 
 /// Receives each event as JSON, e.g.
@@ -63,6 +65,9 @@ struct StartConfig {
     port_fallback: bool,
     /// For this run instead of the saved settings (not saved).
     alias: Option<String>,
+    /// Of the messages: "en", "zh", "ja" or a language tag; Chinese if
+    /// not given.
+    language: Option<String>,
     save_dir: Option<PathBuf>,
 }
 
@@ -112,7 +117,8 @@ pub extern "C" fn wh_version() -> *const c_char {
 /// directory; by default %APPDATA%\WormholeSend or ~/Library/Application
 /// Support/WormholeSend), `port` (default from settings.json, else 53320),
 /// `portFallback` (move to the next free port pair when taken; false for the
-/// apps), `alias` and `saveDir` (for this run instead of the saved settings).
+/// apps), `alias` and `saveDir` (for this run instead of the saved settings),
+/// `language` (of the messages: "en", "zh" or "ja"; Chinese if not given).
 ///
 /// Returns `{"ok":true,"result":<settings.get>}` and sets `*core_out`, or
 /// `{"ok":false,"error":"…"}` and sets `*core_out` to NULL. Free the string
@@ -134,7 +140,7 @@ pub unsafe extern "C" fn wh_start(
     let result = guard(|| {
         let config: StartConfig = match unsafe { text(config_json) } {
             Some(text) if !text.trim().is_empty() => {
-                serde_json::from_str(text).map_err(|err| anyhow::anyhow!("配置不是有效的 JSON：{err}"))?
+                serde_json::from_str(text).map_err(|err| anyhow::anyhow!(tr!("配置不是有效的 JSON：{err}", "The configuration isn't valid JSON: {err}", "設定が有効な JSON ではありません：{err}")))?
             }
             _ => StartConfig::default(),
         };
@@ -153,6 +159,9 @@ pub unsafe extern "C" fn wh_start(
 }
 
 fn start(config: StartConfig, on_event: WhEventCallback, context: Context) -> anyhow::Result<Box<WhCore>> {
+    if let Some(language) = &config.language {
+        i18n::set(Lang::parse(language));
+    }
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("wormhole-core")
@@ -244,7 +253,7 @@ impl Shared {
                     shared.forward(events);
                 }
                 Err(err) => shared.emit(&CoreEvent::Error {
-                    message: format!("无法重新启动服务：{err:#}"),
+                    message: tr!("无法重新启动服务：{err:#}", "Can't restart the services: {err:#}", "サービスを再起動できません：{err:#}"),
                 }),
             }
         });
@@ -270,6 +279,7 @@ impl Drop for Cleared<'_> {
 /// `localsend.list`, `send` (deviceId, paths), `transfer.cancel`
 /// (transferId), `transfer.retry` (transferId), `pair.start` (deviceId),
 /// `pair.confirm` (pairId, accept), `receive.respond` (requestId, accept),
+/// `language.set` (language),
 /// `device.unpair` (deviceId), `device.setDefault` (deviceId),
 /// `settings.get`, `settings.set` (alias?, saveDir?). core-ffi/README.md
 /// describes their results.
@@ -281,10 +291,10 @@ impl Drop for Cleared<'_> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wh_command(core: *const WhCore, command_json: *const c_char) -> *mut c_char {
     let response = guard(|| {
-        let core = unsafe { core.as_ref() }.ok_or_else(|| anyhow::anyhow!("核心没有启动"))?;
-        let text = unsafe { text(command_json) }.ok_or_else(|| anyhow::anyhow!("命令为空"))?;
+        let core = unsafe { core.as_ref() }.ok_or_else(|| anyhow::anyhow!(tr!("核心没有启动", "The core isn't running", "コアが起動していません")))?;
+        let text = unsafe { text(command_json) }.ok_or_else(|| anyhow::anyhow!(tr!("命令为空", "The command is empty", "コマンドが空です")))?;
         let command: Value =
-            serde_json::from_str(text).map_err(|err| anyhow::anyhow!("命令不是有效的 JSON：{err}"))?;
+            serde_json::from_str(text).map_err(|err| anyhow::anyhow!(tr!("命令不是有效的 JSON：{err}", "The command isn't valid JSON: {err}", "コマンドが有効な JSON ではありません：{err}")))?;
         commands::run(&core.shared, &command)
     });
     into_c(match response {
@@ -348,7 +358,7 @@ fn guard<T>(body: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<T> {
                 .map(|s| s.to_string())
                 .or_else(|| panic.downcast_ref::<String>().cloned())
                 .unwrap_or_else(|| "unknown".to_string());
-            Err(anyhow::anyhow!("核心内部错误：{message}"))
+            Err(anyhow::anyhow!(tr!("核心内部错误：{message}", "Internal error in the core: {message}", "コアの内部エラー：{message}")))
         }
     }
 }

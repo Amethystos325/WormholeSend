@@ -226,11 +226,11 @@ pub fn resolve_device<'a, T>(
         return Ok(by_name[0]);
     }
     if by_name.len() > 1 {
-        return Err(format!("有多台设备叫“{query}”，请改用指纹前缀"));
+        return Err(tr!("有多台设备叫“{query}”，请改用指纹前缀", "Several devices are called “{query}”; use a fingerprint prefix", "「{query}」という名前のデバイスが複数あります。フィンガープリントの先頭部分で指定してください"));
     }
     let prefix = normalize_fingerprint(query);
     if prefix.len() < 4 || !prefix.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("找不到设备“{query}”"));
+        return Err(tr!("找不到设备“{query}”", "No device is called “{query}”", "デバイス「{query}」が見つかりません"));
     }
     let by_prefix: Vec<&T> = items
         .iter()
@@ -238,8 +238,8 @@ pub fn resolve_device<'a, T>(
         .collect();
     match by_prefix.len() {
         1 => Ok(by_prefix[0]),
-        0 => Err(format!("找不到设备“{query}”")),
-        _ => Err(format!("指纹前缀“{query}”对应多台设备，请写长一些")),
+        0 => Err(tr!("找不到设备“{query}”", "No device is called “{query}”", "デバイス「{query}」が見つかりません")),
+        _ => Err(tr!("指纹前缀“{query}”对应多台设备，请写长一些", "The fingerprint prefix “{query}” matches several devices; make it longer", "フィンガープリントの先頭「{query}」は複数のデバイスに一致します。もっと長く入力してください")),
     }
 }
 
