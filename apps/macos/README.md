@@ -15,9 +15,9 @@ To test against `whs` on the same Mac, give the app its own data directory and p
 
 You can also open this directory in Xcode (it's a Swift Package) and run it from there.
 
-Menu bar icon (a radio-wave arrow): paired devices (set as default, unpair), pair a new device (nearby devices), open the receive folder.
+Menu bar icon (a black hole: a ring with its accretion disk tilted across it, `Sources/WormholeSend/StatusIcon.swift`, source `assets/tray-icon.svg`): paired devices (set as default, unpair), pair a new device (nearby devices), open the receive folder.
 
-The first launch shows a welcome that explains the Local Network prompt macOS 15+ shows next (to see it again: `defaults delete app.wormholesend.mac welcomed`). Without that permission the system silently drops discovery and outgoing transfers, so the app checks it at start and whenever the menu opens. When it is denied, the menu bar icon turns into a warning triangle, and the menu explains why and links to the setting.
+The first launch shows a welcome that explains the Local Network prompt macOS 15+ shows next (to see it again: `defaults delete app.wormholesend.mac welcomed`). Without that permission the system silently drops discovery and outgoing transfers, so the app checks it at start and whenever the menu opens. When it is denied, the menu bar icon gets an amber dot, and the menu explains why and links to the setting.
 
 ## Demo mode (pinned to a single state with sample data; the core does not start)
 
@@ -44,7 +44,7 @@ States: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sendin
 - [ ] Menu bar → "配对新设备" → pick a device: both sides show the same 6-digit code; after both confirm, it appears under "已配对设备"
 - [ ] Menu bar → a paired device → "解除配对": the other side is notified
 - [ ] First launch: the welcome comes before the system's Local Network prompt; after "允许" the menu shows no warning
-- [ ] Turn Wormhole Send off in System Settings › Privacy & Security › Local Network and restart the app: the icon becomes a warning triangle, the menu says "没有本地网络权限" and "打开“本地网络”设置…" opens that page; turning it back on clears the warning the next time the menu opens
+- [ ] Turn Wormhole Send off in System Settings › Privacy & Security › Local Network and restart the app: the icon gets an amber dot, the menu says "没有本地网络权限" and "打开“本地网络”设置…" opens that page; turning it back on clears the warning the next time the menu opens
 - [ ] Drag on the external monitor: a floating capsule appears at the top of that screen
 - [ ] While the island is showing, click menu bar items next to the notch: they still work (clicks pass through the transparent area)
 - [ ] Switch to a full-screen app and drag: the island still appears

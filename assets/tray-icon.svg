@@ -1,0 +1,24 @@
+<!-- Wormhole Send tray / menu bar icon: a black hole drawn as its photon
+     ring, the accretion disk tilted across it. 24-unit grid, monochrome
+     (currentColor). The disk's far half hides behind the ring and its near
+     half passes in front; masks cut a 1.3-unit gap around whatever lies
+     over a part.
+     Ring r 5, stroke 2. Disk ellipse rx 10.6, ry 4, stroke 1.8, tilted -22°.
+     Status dot (warning, queued): center (20, 17), r 2.9, with a 1.3-unit
+     gap cut out of the icon around it.
+     macOS draws the same geometry in apps/macos/Sources/WormholeSend/StatusIcon.swift. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <g transform="translate(12 12) rotate(-22)" fill="none" stroke="currentColor" stroke-linecap="round">
+    <mask id="ring-cut" maskUnits="userSpaceOnUse" x="-12" y="-12" width="24" height="24">
+      <rect x="-12" y="-12" width="24" height="24" fill="white"/>
+      <path d="M -10.6 0 A 10.6 4 0 0 0 10.6 0" stroke="black" stroke-width="4.4"/>
+    </mask>
+    <mask id="far-cut" maskUnits="userSpaceOnUse" x="-12" y="-12" width="24" height="24">
+      <rect x="-12" y="-12" width="24" height="24" fill="white"/>
+      <circle r="8.2" fill="black" stroke="none"/>
+    </mask>
+    <path d="M -10.6 0 A 10.6 4 0 0 1 10.6 0" stroke-width="1.8" mask="url(#far-cut)"/>
+    <circle r="5" stroke-width="2" mask="url(#ring-cut)"/>
+    <path d="M -10.6 0 A 10.6 4 0 0 0 10.6 0" stroke-width="1.8"/>
+  </g>
+</svg>

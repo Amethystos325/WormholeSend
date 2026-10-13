@@ -162,7 +162,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.log("local network \(denied ? "denied" : "allowed")")
             guard let self, denied != self.networkDenied else { return }
             self.networkDenied = denied
-            self.statusItem?.button?.image = Self.statusImage(warning: denied)
+            self.statusItem?.button?.image = StatusIcon.image(warning: denied)
             if self.menuIsOpen, let menu = self.statusItem?.menu {
                 menu.removeAllItems()
                 self.buildMainMenu(menu)
@@ -170,18 +170,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private static func statusImage(warning: Bool) -> NSImage? {
-        NSImage(
-            systemSymbolName: warning ? "exclamationmark.triangle" : "dot.radiowaves.up.forward",
-            accessibilityDescription: "Wormhole Send")
-    }
-
     private func addNetworkWarning(to menu: NSMenu, _ text: String) {
-        let warning = disabledItem(text)
-        warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
-        menu.addItem(warning)
+        menu.addItem(disabledItem(text, symbol: "exclamationmark.triangle.fill"))
         let open = NSMenuItem(title: "打开“本地网络”设置…", action: #selector(openNetworkSettings), keyEquivalent: "")
         open.target = self
+        open.image = icon("gearshape")
         menu.addItem(open)
     }
 
@@ -263,8 +256,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu bar item
 
     private func setUpStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = Self.statusImage(warning: false)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = StatusIcon.image(warning: false)
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
@@ -318,9 +311,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func buildMainMenu(_ menu: NSMenu) {
         let name = settings.map { "Wormhole Send · \($0.alias)" } ?? "Wormhole Send"
-        menu.addItem(disabledItem(name))
+        let header = disabledItem(name)
+        header.image = StatusIcon.image(warning: false, scale: 0.75)
+        menu.addItem(header)
         if let coreError {
-            menu.addItem(disabledItem("核心没有运行：\(coreError)"))
+            menu.addItem(disabledItem("核心没有运行：\(coreError)", symbol: "exclamationmark.octagon"))
         }
         if networkDenied {
             addNetworkWarning(to: menu, "没有本地网络权限，其他设备找不到这台 Mac")
@@ -329,7 +324,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if core != nil {
             model.reloadDevices()
-            menu.addItem(disabledItem(model.devices.isEmpty ? "还没有配对设备" : "已配对设备"))
+            menu.addItem(disabledItem(model.devices.isEmpty ? "还没有配对设备" : "已配对设备", symbol: "link"))
             let repair = (try? core?.call("devices.list", as: [DeviceInfo].self).get())?
                 .filter(\.needsRepair).map(\.fingerprint) ?? []
             for device in model.devices {
@@ -338,13 +333,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if repair.contains(device.id) { title += "（需要重新配对）" }
                 let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                 item.state = device.isDefault ? .on : .off
+                item.image = icon(device.symbol)
                 let actions = NSMenu()
-                actions.addItem(actionItem("设为默认设备", #selector(setDefault(_:)), device.id, enabled: !device.isDefault))
-                actions.addItem(actionItem("解除配对…", #selector(unpair(_:)), device.id))
+                actions.addItem(actionItem("设为默认设备", #selector(setDefault(_:)), device.id, symbol: "star", enabled: !device.isDefault))
+                actions.addItem(actionItem("解除配对…", #selector(unpair(_:)), device.id, symbol: "minus.circle"))
                 item.submenu = actions
                 menu.addItem(item)
             }
             let pairing = NSMenuItem(title: "配对新设备", action: nil, keyEquivalent: "")
+            pairing.image = icon("link.badge.plus")
             let pairingMenu = NSMenu()
             pairingMenu.delegate = self
             pairing.submenu = pairingMenu
@@ -352,10 +349,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
             let folder = NSMenuItem(title: "打开接收文件夹", action: #selector(openSaveFolder), keyEquivalent: "")
             folder.target = self
+            folder.image = icon("folder")
             menu.addItem(folder)
             menu.addItem(.separator())
         }
-        menu.addItem(NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        let quit = NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.image = icon("power")
+        menu.addItem(quit)
     }
 
     /// Online devices that are not paired. Asking also announces this device.
@@ -368,24 +368,33 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if nearby.isEmpty, networkDenied {
             addNetworkWarning(to: menu, "没有本地网络权限，搜索不到附近设备")
         } else if nearby.isEmpty {
-            menu.addItem(disabledItem("正在搜索附近设备…"))
+            menu.addItem(disabledItem("正在搜索附近设备…", symbol: "antenna.radiowaves.left.and.right"))
         }
         for device in nearby {
-            menu.addItem(actionItem(device.alias, #selector(startPairing(_:)), device.fingerprint))
+            let symbol = Device.symbol(for: device.deviceType)
+            menu.addItem(actionItem(device.alias, #selector(startPairing(_:)), device.fingerprint, symbol: symbol))
         }
     }
 
-    private func disabledItem(_ title: String) -> NSMenuItem {
+    private func icon(_ symbol: String) -> NSImage? {
+        NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    }
+
+    private func disabledItem(_ title: String, symbol: String? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
+        item.image = symbol.flatMap(icon)
         return item
     }
 
-    private func actionItem(_ title: String, _ action: Selector, _ deviceId: String, enabled: Bool = true) -> NSMenuItem {
+    private func actionItem(
+        _ title: String, _ action: Selector, _ deviceId: String, symbol: String, enabled: Bool = true
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: enabled ? action : nil, keyEquivalent: "")
         item.target = self
         item.representedObject = deviceId
         item.isEnabled = enabled
+        item.image = icon(symbol)
         return item
     }
 
