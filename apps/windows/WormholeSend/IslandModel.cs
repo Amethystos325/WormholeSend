@@ -30,7 +30,7 @@ sealed class IslandModel : INotifyPropertyChanged
     bool queueCollapsed;
     bool hovering;
     int waitingCount;
-    string saveDirLabel = @"下载\Wormhole Send";
+    string saveDirLabel = L.T("下载\\Wormhole Send", "Downloads\\Wormhole Send", "ダウンロード\\Wormhole Send");
 
     IReadOnlyList<string> dragFiles = [];
     /// The drag carries no files (text, a link), as found once it reached a
@@ -251,11 +251,13 @@ sealed class IslandModel : INotifyPropertyChanged
     {
         var targets = Targets;
         if (dragNotFiles)
-            Phase = new Phase.Unavailable("只能发送文件");
+            Phase = new Phase.Unavailable(L.T("只能发送文件", "Only files can be sent", "送信できるのはファイルだけです"));
         else if (targets.Count == 0)
-            Phase = new Phase.Unavailable("还没有配对设备 · 点击配对");
+            Phase = new Phase.Unavailable(L.T("还没有配对设备 · 点击配对", "No paired devices · Click to pair", "ペアリングしたデバイスがありません · クリックしてペアリング"));
         else if (!targets.Any(Available))
-            Phase = new Phase.Unavailable(targets.Count == 1 ? $"{targets[0].Name} 离线，无法发送" : "没有在线的设备");
+            Phase = new Phase.Unavailable(targets.Count == 1
+                ? L.T($"{targets[0].Name} 离线，无法发送", $"{targets[0].Name} is offline", $"{targets[0].Name} はオフラインです")
+                : L.T("没有在线的设备", "No devices online", "オンラインのデバイスがありません"));
         else if (targets.Count == 1)
             Phase = new Phase.Picker(0);
         else if (DefaultDevice is { } device && Available(device))
@@ -279,10 +281,14 @@ sealed class IslandModel : INotifyPropertyChanged
     {
         get
         {
-            if (devices.Count == 0) return localSend.Count == 0 ? "还没有配对设备" : "移到这里选择设备";
-            if (devices.Count == 1 && !Available(devices[0]) && localSend.Count == 0) return $"{devices[0].Name} 离线，无法发送";
-            if (DefaultDevice is { } device && Available(device)) return $"移到这里发送到 {device.Name}";
-            return "默认设备离线，移到这里选其他设备";
+            if (devices.Count == 0)
+                return localSend.Count == 0
+                    ? L.T("还没有配对设备", "No paired devices yet", "ペアリングしたデバイスがありません")
+                    : L.T("移到这里选择设备", "Move here to choose a device", "ここに移動してデバイスを選択");
+            if (devices.Count == 1 && !Available(devices[0]) && localSend.Count == 0) return L.T($"{devices[0].Name} 离线，无法发送", $"{devices[0].Name} is offline", $"{devices[0].Name} はオフラインです");
+            if (DefaultDevice is { } device && Available(device))
+                return L.T($"移到这里发送到 {device.Name}", $"Move here to send to {device.Name}", $"ここに移動して {device.Name} に送信");
+            return L.T("默认设备离线，移到这里选其他设备", "Default device offline. Move here to choose another", "既定のデバイスはオフラインです。ここで別のデバイスを選択");
         }
     }
 
@@ -310,7 +316,7 @@ sealed class IslandModel : INotifyPropertyChanged
     void Refuse(Device device)
     {
         CancelTimers();
-        Phase = new Phase.Refused(device.Name, device.NeedsRepair ? "需要重新配对" : "离线");
+        Phase = new Phase.Refused(device.Name, device.NeedsRepair);
         Schedule(Spec.RefusedHold, () => Phase = new Phase.Idle());
     }
 
@@ -387,7 +393,7 @@ sealed class IslandModel : INotifyPropertyChanged
                 break;
 
             case TransferStarted { Sending: false } started:
-                var label = started.Files == 1 ? "1 个文件" : $"{started.Files} 个文件";
+                var label = L.Files(started.Files);
                 receive = new Incoming(started.Id, new Transfer(DeviceFor(started.DeviceId, started.Alias), [], label, started.Files));
                 if (CanShowReceive) ShowReceive();
                 break;
@@ -422,7 +428,7 @@ sealed class IslandModel : INotifyPropertyChanged
                 if (pendingRequest?.RequestId == closed.RequestId) pendingRequest = null;
                 if (phase is not Phase.ReceiveRequest shown || shown.RequestId != closed.RequestId) break;
                 if (closed.Reason == "cancelled")
-                    Notify(new Phase.Notice($"{shown.Alias} 取消了发送", Success: false));
+                    Notify(new Phase.Notice(L.T($"{shown.Alias} 取消了发送", $"{shown.Alias} cancelled", $"{shown.Alias} が送信をキャンセルしました"), Success: false));
                 else
                     Phase = new Phase.Idle();
                 break;
@@ -449,15 +455,15 @@ sealed class IslandModel : INotifyPropertyChanged
                 break;
             // Asking again would only ask the same user again: no retry.
             case "declined":
-                Fail(string.IsNullOrWhiteSpace(finished.Error) ? "对方拒绝了接收" : finished.Error, canRetry: false);
+                Fail(string.IsNullOrWhiteSpace(finished.Error) ? L.T("对方拒绝了接收", "Declined", "相手が受信を拒否しました") : finished.Error, canRetry: false);
                 break;
             default:
                 Fail(finished.Status switch
                 {
-                    "rejected" => "对方已解除配对，需要重新配对",
-                    "busy" => "对方忙，稍后再试",
-                    "offline" => "无法连接，请确认在同一网络",
-                    _ => string.IsNullOrWhiteSpace(finished.Error) ? "网络中断" : finished.Error,
+                    "rejected" => L.T("对方已解除配对，需要重新配对", "It unpaired this device; pair again", "相手がペアリングを解除しました。再ペアリングしてください"),
+                    "busy" => L.T("对方忙，稍后再试", "It's busy; try again later", "相手は取り込み中です。しばらくしてからやり直してください"),
+                    "offline" => L.T("无法连接，请确认在同一网络", "Can't connect; make sure you're on the same network", "接続できません。同じネットワークにいるか確認してください"),
+                    _ => string.IsNullOrWhiteSpace(finished.Error) ? L.T("网络中断", "The network dropped", "ネットワークが切断されました") : finished.Error,
                 });
                 break;
         }
@@ -494,7 +500,9 @@ sealed class IslandModel : INotifyPropertyChanged
                 // The sender cancelled or the connection broke; the core has
                 // removed the partial files.
                 receive = null;
-                Phase = new Phase.Interrupted(incoming.Status == "cancelled" ? "对方取消了发送" : "连接中断");
+                Phase = new Phase.Interrupted(incoming.Status == "cancelled"
+                    ? L.T("对方取消了发送", "The sender cancelled", "送信者がキャンセルしました")
+                    : L.T("连接中断", "The connection dropped", "接続が切れました"));
                 Schedule(Spec.FailedHold, () =>
                 {
                     if (phase is Phase.Interrupted) Phase = new Phase.Idle();
@@ -582,11 +590,11 @@ sealed class IslandModel : INotifyPropertyChanged
         var mine = phase is Phase.PairWaiting || (phase is Phase.PairRequest request && request.PairId == pairId);
         if (!mine) return;
         if (ok)
-            ShowNotice($"已与 {alias} 配对", success: true);
+            ShowNotice(L.T($"已与 {alias} 配对", $"Paired with {alias}", $"{alias} とペアリングしました"), success: true);
         else if (phase is Phase.PairRequest)
             Phase = new Phase.Idle();
         else
-            ShowNotice($"配对失败：{reason ?? "未知原因"}", success: false);
+            ShowNotice(L.T($"配对失败：{reason ?? "未知原因"}", $"Pairing failed: {reason ?? "unknown reason"}", $"ペアリングに失敗しました：{reason ?? "原因不明"}"), success: false);
     }
 
     // MARK: - LocalSend requests
@@ -618,8 +626,8 @@ sealed class IslandModel : INotifyPropertyChanged
             return;
         }
         Notify(CopyText(text)
-            ? new Phase.Notice("已复制到剪贴板", Success: true, Preview(text))
-            : new Phase.Notice("无法写入剪贴板", Success: false));
+            ? new Phase.Notice(L.T("已复制到剪贴板", "Copied", "コピーしました"), Success: true, Preview(text))
+            : new Phase.Notice(L.T("无法写入剪贴板", "Couldn't copy to the clipboard", "クリップボードにコピーできませんでした"), Success: false));
     }
 
     /// Whole seconds until the core declines the request, for its button;
@@ -629,13 +637,13 @@ sealed class IslandModel : INotifyPropertyChanged
             ? Math.Max(0, (int)Math.Ceiling((deadline - Clock()).TotalSeconds))
             : null;
 
-    /// The start of a text, on one line.
+    /// The start of a text, on one line; the island shortens it further to
+    /// what fits.
     public static string Preview(string text)
     {
         var line = string.Join(" ", text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         var starts = System.Globalization.StringInfo.ParseCombiningCharacters(line);
-        // About what fits beside "已复制到剪贴板".
-        return starts.Length <= 11 ? line : line[..starts[11]] + "…";
+        return starts.Length <= 40 ? line : line[..starts[40]] + "…";
     }
 
     /// A short message, unless the user is busy with something else.

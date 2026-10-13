@@ -51,6 +51,8 @@ sealed class TrayMenu : FluentWindow
         WindowBackdropType = parent is null ? WindowBackdropType.Acrylic : WindowBackdropType.None;
         ExtendsContentIntoTitleBar = true;
         WindowStyle = WindowStyle.None;
+        Language = L.Xml;
+        FontFamily = Fonts.Ui;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         Topmost = true;

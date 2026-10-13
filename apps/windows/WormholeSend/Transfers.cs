@@ -53,7 +53,7 @@ sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
     public string Send(Device device, IReadOnlyList<string> files) => Start(device, files, NextOutcome);
 
     public string Retry(string transferId) =>
-        sends.TryGetValue(transferId, out var send) ? Start(send.Device, send.Files, Outcome.Success) : throw new CoreException("找不到这次发送");
+        sends.TryGetValue(transferId, out var send) ? Start(send.Device, send.Files, Outcome.Success) : throw new CoreException(L.T("找不到这次发送", "No such send", "この送信が見つかりません"));
 
     public void Cancel(string transferId)
     {
@@ -82,7 +82,7 @@ sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
                 else
                 {
                     timers.Remove(id);
-                    emit(new TransferFinished(id, true, device.Id, device.Name, "declined", 0, 0, [], $"{device.Name} 拒绝了接收"));
+                    emit(new TransferFinished(id, true, device.Id, device.Name, "declined", 0, 0, [], L.T($"{device.Name} 拒绝了接收", $"{device.Name} declined", $"{device.Name} が受信を拒否しました")));
                 }
             });
             return id;
@@ -127,7 +127,7 @@ sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
             {
                 tick.Stop();
                 timers.Remove(id);
-                emit(new TransferFinished(id, sending, device.Id, device.Name, "failed", 0, bytes, [], "网络中断"));
+                emit(new TransferFinished(id, sending, device.Id, device.Name, "failed", 0, bytes, [], L.T("网络中断", "The network dropped", "ネットワークが切断されました")));
             }
             else if (fraction >= 1)
             {

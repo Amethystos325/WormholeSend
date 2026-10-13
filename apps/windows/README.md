@@ -29,6 +29,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
 | `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
 | `AppIcon.cs` | The app icon (`assets/app-icon.ico`, made on the Mac from `app-icon.svg`) in the title bars; also the exe's icon |
+| `Lang.cs`, `Strings.cs` | The interface language (English, Chinese, Japanese) and the windows' texts |
 | `SettingsWindow`, `PairWindow`, `WelcomeWindow` | Settings (7.1), pairing with the 6-digit code (3.1), first-run guide (7.3) |
 
 ## How it differs from macOS
@@ -41,6 +42,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 - Received files can be dragged out to Explorer or the desktop; they are copied, not moved.
 - Phases the macOS spike doesn't have yet: `pairRequest` (another device asks to pair; 380 × 78 content, the code on the right, 拒绝 / 配对), `pairWaiting` and `notice` (340 × 28 status lines). `interrupted(reason)` matches the macOS app.
 - LocalSend devices (the LocalSend app, which can't pair) come after the paired ones in the device list, marked "LocalSend"; the default device is always a paired one, and without paired devices a drag goes straight to the list. Sending to one waits ("等待 … 接收…", `awaitingAcceptance`) until its user accepts; declining ends as a failure. A LocalSend device that sends here asks first (`receiveRequest`: 拒绝 / 接收 with the size, or 忽略 / 复制 with the start of a text message, which is copied to the clipboard), as a pairing request does: after a drag or a send, with the pairing request's sound.
+- The interface is in English, Chinese or Japanese: Windows' display language, unless one is chosen in the settings (kept in `HKCU\Software\WormholeSend`, `Language`). Each text is written out in the three where it is used, `L.T("中文", "English", "日本語")`, as `tr!` in the core, which is told the same language (`language` at start, `language.set` on a change). Changing it builds the islands and the settings window again. Japanese text is set in Yu Gothic UI throughout, so a line doesn't mix two fonts' weights; Chinese in Segoe UI with Microsoft YaHei UI.
 - While receiving, a new drag takes over the island; the receive shows again afterwards. A send shows before a receive (design doc 2.2).
 
 ## Command line
@@ -51,6 +53,7 @@ WormholeSend.exe --fake [--log]                       # simulated devices and tr
 WormholeSend.exe --demo picker [--screen external|N] [--devices 1] [--snapshot out.png]
 WormholeSend.exe --selftest --log                     # drags through OLE, without the mouse
 WormholeSend.exe --fake --menu [--snapshot out.png]   # the tray menu with a submenu open, at the screen center
+WormholeSend.exe … --lang en|zh|ja                    # any of the above in a language, for this run
 ```
 
 `--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `pair-request` `notice`, and for LocalSend `receive-request` `receive-text` `copied` `awaiting` `picker-localsend`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.
@@ -91,6 +94,7 @@ Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest
 - [ ] Sounds: delivered, received, a failed send, a receive that breaks off (not when the sender cancels), a pairing request
 - [ ] A LocalSend app on the network: it shows in the device list as "LocalSend"; sending waits for its user, then runs, or fails with "… 拒绝了接收"
 - [ ] The LocalSend app sends files: the island asks (拒绝 / 接收), then receives; it sends a text: 复制 copies it and says so
+- [ ] Language: follows Windows' display language; choosing English, 简体中文 or 日本語 in the settings switches the island, the menu, the settings and the core's messages at once
 - [ ] Tray menu: default device (offline grey), 配对新设备, 打开接收文件夹, 提示音 (plays one when turned on), 设置, 退出
 - [ ] Second monitor: dragging into its sensor opens the island there; incoming transfers show on the primary screen
 - [ ] 150 % scaling, and monitors with different scaling: crisp, at the top center of each

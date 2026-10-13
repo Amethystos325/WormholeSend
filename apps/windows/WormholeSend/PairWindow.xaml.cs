@@ -21,6 +21,8 @@ public partial class PairWindow : FluentWindow
     {
         this.session = session;
         InitializeComponent();
+        Language = L.Xml;
+        FontFamily = Fonts.Ui;
         AppIcon.Show(Bar, this);
         SystemThemeWatcher.Watch(this);
         session.PairingEvent += OnPairing;
@@ -57,7 +59,7 @@ public partial class PairWindow : FluentWindow
         }
         foreach (var device in devices.Where(d => !cards.ContainsKey(d.Id)))
         {
-            var pair = new Wpf.Ui.Controls.Button { Content = "配对", Appearance = ControlAppearance.Primary };
+            var pair = new Wpf.Ui.Controls.Button { Content = L.T("配对", "Pair", "ペアリング"), Appearance = ControlAppearance.Primary };
             pair.Click += (_, _) => Start(device);
             var card = new CardControl
             {
@@ -75,11 +77,11 @@ public partial class PairWindow : FluentWindow
     {
         search.Stop();
         alias = device.Name;
-        ShowWaiting($"正在连接 {alias}…");
+        ShowWaiting(L.T($"正在连接 {alias}…", $"Connecting to {alias}…", $"{alias} に接続しています…"));
         if (Command("pair.start", new JsonObject { ["deviceId"] = device.Id }) is JsonValue id)
             pairId = id.GetValue<string>();
         else
-            ShowResult(false, "无法开始配对", lastError ?? "");
+            ShowResult(false, L.T("无法开始配对", "Couldn't start pairing", "ペアリングを開始できません"), lastError ?? "");
     }
 
     void OnPairing(CoreEvent e)
@@ -87,7 +89,7 @@ public partial class PairWindow : FluentWindow
         switch (e)
         {
             case PairCode code when code.PairId == pairId:
-                CodeTitle.Text = $"核对 {code.Alias} 上的数字";
+                CodeTitle.Text = L.T($"核对 {code.Alias} 上的数字", $"Check the number on {code.Alias}", $"{code.Alias} に表示された数字を確認");
                 CodeText.Text = code.Code.Length == 6 ? $"{code.Code[..3]} {code.Code[3..]}" : code.Code;
                 AcceptButton.IsEnabled = true;
                 SearchPanel.Visibility = ResultPanel.Visibility = Visibility.Collapsed;
@@ -96,9 +98,10 @@ public partial class PairWindow : FluentWindow
             case PairResult result when result.PairId == pairId:
                 pairId = null;
                 if (result.Ok)
-                    ShowResult(true, $"已与 {result.Alias} 配对", "之后把文件拖到屏幕顶部中间，松手就发过去，对方不用确认。");
+                    ShowResult(true, L.T($"已与 {result.Alias} 配对", $"Paired with {result.Alias}", $"{result.Alias} とペアリングしました"),
+                    L.T("之后把文件拖到屏幕顶部中间，松手就发过去，对方不用确认。", "From now on, drag files to the top center of the screen and release them: they go over without asking.", "これからは、ファイルを画面上部の中央にドラッグして離すだけで、確認なしで送信できます。"));
                 else
-                    ShowResult(false, "配对没有完成", result.Reason ?? "");
+                    ShowResult(false, L.T("配对没有完成", "Pairing didn't finish", "ペアリングが完了しませんでした"), result.Reason ?? "");
                 break;
         }
     }
@@ -109,16 +112,17 @@ public partial class PairWindow : FluentWindow
         AcceptButton.IsEnabled = false;
         Command("pair.confirm", new JsonObject { ["pairId"] = id, ["accept"] = true });
         if (lastError is null)
-            ShowWaiting($"等待 {alias} 确认…");
+            ShowWaiting(L.T($"等待 {alias} 确认…", $"Waiting for {alias} to confirm…", $"{alias} の確認を待っています…"));
         else
-            ShowResult(false, "配对没有完成", lastError);
+            ShowResult(false, L.T("配对没有完成", "Pairing didn't finish", "ペアリングが完了しませんでした"), lastError);
     }
 
     void Decline_Click(object sender, RoutedEventArgs e)
     {
         if (pairId is { } id) Command("pair.confirm", new JsonObject { ["pairId"] = id, ["accept"] = false });
         pairId = null;
-        ShowResult(false, "已取消配对", "数字不一致时，可能有别的设备在冒充对方。");
+        ShowResult(false, L.T("已取消配对", "Pairing cancelled", "ペアリングを中止しました"),
+            L.T("数字不一致时，可能有别的设备在冒充对方。", "When the numbers differ, another device may be pretending to be it.", "数字が一致しない場合は、別のデバイスがなりすましている可能性があります。"));
     }
 
     void ShowWaiting(string text)
@@ -154,7 +158,7 @@ public partial class PairWindow : FluentWindow
         lastError = null;
         try
         {
-            return session.Core?.Command(name, arguments) ?? throw new CoreException("服务没有在运行");
+            return session.Core?.Command(name, arguments) ?? throw new CoreException(L.T("服务没有在运行", "The services aren't running", "サービスが動いていません"));
         }
         catch (CoreException e)
         {

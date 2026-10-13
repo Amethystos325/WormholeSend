@@ -14,17 +14,18 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        var options = Options.Parse(e.Args);
+        if (options.Lang is { } lang)
+            L.Use(lang switch { "zh" => UiLanguage.Zh, "ja" => UiLanguage.Ja, _ => UiLanguage.En });
         // Text with its stems on whole pixels: WPF's default (Ideal) spreads
         // Chinese strokes over two pixels, and they look blurred.
         TextOptions.TextFormattingModeProperty.OverrideMetadata(typeof(FrameworkElement),
             new FrameworkPropertyMetadata(TextFormattingMode.Display,
                 FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.Inherits));
         // WPF assumes en-US, and for Chinese characters that falls back to a
-        // Japanese font (Yu Gothic): the language picks the CJK font. The
-        // text is Chinese.
-        FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
-            new FrameworkPropertyMetadata(System.Windows.Markup.XmlLanguage.GetLanguage("zh-CN")));
-        var options = Options.Parse(e.Args);
+        // Japanese font (Yu Gothic): the language picks the CJK font. Each
+        // window sets it again, as the language can change.
+        FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement), new FrameworkPropertyMetadata(L.Xml));
         if (options.Log) Log.Enable();
         // One app per data directory. Starting it again opens the settings
         // of the one already running.

@@ -8,10 +8,11 @@ namespace WormholeSend;
 sealed record Device(
     string Id, string Name, string Glyph, bool Online, bool IsDefault, bool NeedsRepair = false, bool LocalSend = false)
 {
-    /// Fake devices for the fake-data mode, demos and tests.
-    public static readonly IReadOnlyList<Device> Samples =
+    /// Fake devices for the fake-data mode, demos and tests, named in the
+    /// interface's language.
+    public static IReadOnlyList<Device> Samples =>
     [
-        new("desk", "书房台式机", Glyphs.Desktop, Online: true, IsDefault: true),
+        new("desk", L.T("书房台式机", "Study PC", "書斎の PC"), Glyphs.Desktop, Online: true, IsDefault: true),
         new("air", "MacBook Air", Glyphs.Laptop, Online: true, IsDefault: false),
         new("ipad", "iPad", Glyphs.Tablet, Online: false, IsDefault: false),
     ];
@@ -52,12 +53,19 @@ static class FileLabel
 {
     public static string Of(IReadOnlyList<string> paths)
     {
-        if (paths.Count == 0) return "文件";
+        if (paths.Count == 0) return L.T("文件", "Files", "ファイル");
         var name = Path.GetFileName(paths[0].TrimEnd('\\', '/'));
         var folders = paths.Count(Directory.Exists);
-        if (paths.Count == 1) return folders == 1 ? $"文件夹 {name}" : name;
-        var kind = folders == 0 ? "文件" : folders == paths.Count ? "文件夹" : "文件或文件夹";
-        return $"{name} 等 {paths.Count} 个{kind}";
+        if (paths.Count == 1)
+            return folders == 1 ? L.T($"文件夹 {name}", $"{name} (folder)", $"フォルダ「{name}」") : name;
+        // Files, folders, or both; English counts the others.
+        var kind = folders == 0 ? 0 : folders == paths.Count ? 1 : 2;
+        var count = paths.Count;
+        var more = count - 1;
+        return L.T(
+            $"{name} 等 {count} 个{new[] { "文件", "文件夹", "文件或文件夹" }[kind]}",
+            $"{name} and {more} more {new[] { "file", "folder", "item" }[kind]}{(more == 1 ? "" : "s")}",
+            $"{name} など {count} 個の{new[] { "ファイル", "フォルダ", "項目" }[kind]}");
     }
 }
 
@@ -95,7 +103,9 @@ sealed class TransferStats(long total = 0, int files = 0)
         get
         {
             if (Total == 0 && Files == 0) return "";
-            var done = Files > 1 ? $"{FilesDone} / {Files} 个文件" : $"{Size(Bytes)} / {Size(Total)}";
+            var done = Files > 1
+                ? L.T($"{FilesDone} / {Files} 个文件", $"{FilesDone} / {Files} files", $"{FilesDone} / {Files} 個のファイル")
+                : $"{Size(Bytes)} / {Size(Total)}";
             return Speed is { } speed ? $"{done} · {Size((long)speed)}/s" : done;
         }
     }
@@ -107,7 +117,7 @@ sealed class TransferStats(long total = 0, int files = 0)
     public static string Size(long bytes)
     {
         if (bytes <= 0) return "0 KB";
-        if (bytes < 1000) return $"{bytes} 字节";
+        if (bytes < 1000) return L.T($"{bytes} 字节", $"{bytes} bytes", $"{bytes} バイト");
         double value = bytes / 1000.0;
         var unit = 0;
         while (true)
@@ -130,7 +140,7 @@ static class DemoFiles
     {
         var dir = Path.Combine(Path.GetTempPath(), "WormholeSendDemo");
         Directory.CreateDirectory(dir);
-        return new[] { "IMG_2041.heic", "IMG_2042.heic", "会议纪要.docx" }
+        return new[] { "IMG_2041.heic", "IMG_2042.heic", L.T("会议纪要.docx", "Meeting notes.docx", "議事録.docx") }
             .Select(name =>
             {
                 var path = Path.Combine(dir, name);

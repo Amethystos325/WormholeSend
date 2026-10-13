@@ -2,7 +2,8 @@
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-                 Title="配对新设备"
+                 xmlns:l="clr-namespace:WormholeSend"
+                 Title="{x:Static l:S.PairTitle}"
                  Width="460" Height="520" ResizeMode="NoResize"
                  WindowStartupLocation="CenterScreen"
                  WindowBackdropType="Mica"
@@ -12,15 +13,15 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <ui:TitleBar x:Name="Bar" Title="配对新设备" ShowMaximize="False" ShowMinimize="False" />
+        <ui:TitleBar x:Name="Bar" Title="{x:Static l:S.PairTitle}" ShowMaximize="False" ShowMinimize="False" />
 
         <!-- 1. Nearby devices -->
         <DockPanel x:Name="SearchPanel" Grid.Row="1" Margin="24,8,24,24">
             <ui:TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
-                          Text="在另一台电脑上打开 Wormhole Send，两台电脑要连在同一个网络里。配对一次之后，互传文件不用对方确认。" />
+                          Text="{x:Static l:S.PairIntro}" />
             <StackPanel DockPanel.Dock="Top" Margin="0,16,0,8" Orientation="Horizontal">
                 <ui:ProgressRing Width="16" Height="16" IsIndeterminate="True" />
-                <ui:TextBlock Margin="8,0,0,0" Appearance="Secondary" Text="正在搜索附近的设备…" />
+                <ui:TextBlock Margin="8,0,0,0" Appearance="Secondary" Text="{x:Static l:S.Searching}" />
             </StackPanel>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel x:Name="NearbyList" />
@@ -31,12 +32,12 @@
         <StackPanel x:Name="CodePanel" Grid.Row="1" Margin="24,24,24,24" Visibility="Collapsed">
             <ui:TextBlock x:Name="CodeTitle" FontTypography="Subtitle" TextWrapping="Wrap" />
             <ui:TextBlock Margin="0,6,0,0" Appearance="Secondary" TextWrapping="Wrap"
-                          Text="对方屏幕上会显示一个 6 位数。两边一致才说明连上的是它，而不是别人冒充的设备。" />
+                          Text="{x:Static l:S.CodeExplained}" />
             <TextBlock x:Name="CodeText" Margin="0,28,0,28" HorizontalAlignment="Center"
                        FontSize="44" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" />
             <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                <ui:Button Content="不一致" Click="Decline_Click" />
-                <ui:Button x:Name="AcceptButton" Margin="8,0,0,0" Appearance="Primary" Content="一致，配对" Click="Accept_Click" />
+                <ui:Button Content="{x:Static l:S.Mismatch}" Click="Decline_Click" />
+                <ui:Button x:Name="AcceptButton" Margin="8,0,0,0" Appearance="Primary" Content="{x:Static l:S.MatchPair}" Click="Accept_Click" />
             </StackPanel>
         </StackPanel>
 
@@ -49,8 +50,8 @@
             <ui:TextBlock x:Name="ResultDetail" Margin="0,6,0,0" HorizontalAlignment="Center"
                           Appearance="Secondary" TextAlignment="Center" TextWrapping="Wrap" />
             <StackPanel Margin="0,28,0,0" HorizontalAlignment="Center" Orientation="Horizontal">
-                <ui:Button x:Name="AgainButton" Content="配对其他设备" Click="Again_Click" Visibility="Collapsed" />
-                <ui:Button x:Name="DoneButton" Margin="8,0,0,0" Appearance="Primary" Content="完成" Click="Done_Click" Visibility="Collapsed" />
+                <ui:Button x:Name="AgainButton" Content="{x:Static l:S.PairAnother}" Click="Again_Click" Visibility="Collapsed" />
+                <ui:Button x:Name="DoneButton" Margin="8,0,0,0" Appearance="Primary" Content="{x:Static l:S.Done}" Click="Done_Click" Visibility="Collapsed" />
             </StackPanel>
         </StackPanel>
     </Grid>

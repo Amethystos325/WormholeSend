@@ -23,6 +23,7 @@ sealed class IslandWindow : Window
         Screen = screen;
         View = new IslandView(model);
         Title = "Wormhole Send";
+        Language = L.Xml;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;

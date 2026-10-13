@@ -110,5 +110,18 @@ static class Glyphs
 static class Fonts
 {
     // Not Segoe UI Variable: WPF can't pick weights from variable fonts.
-    public static readonly FontFamily Ui = new("Segoe UI, Microsoft YaHei UI");
+    static readonly FontFamily Chinese = new("Segoe UI, Microsoft YaHei UI");
+    /// Windows' Japanese interface font for everything, Latin included, so
+    /// a line doesn't mix two fonts' weights; YaHei only for the characters
+    /// Japanese fonts lack (simplified Chinese).
+    static readonly FontFamily Japanese = new("Yu Gothic UI, Microsoft YaHei UI");
+    static readonly FontFamily EnglishJapanese = new("Segoe UI, Yu Gothic UI, Microsoft YaHei UI");
+
+    /// The interface's language, Chinese characters in its forms.
+    public static FontFamily Ui => L.Current switch
+    {
+        UiLanguage.Ja => Japanese,
+        UiLanguage.En when L.Han == UiLanguage.Ja => EnglishJapanese,
+        _ => Chinese,
+    };
 }

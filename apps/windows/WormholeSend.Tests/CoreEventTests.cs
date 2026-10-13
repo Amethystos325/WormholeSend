@@ -200,7 +200,7 @@ public class CoreEventTests
         model.DragMoved(new Point(280, 90), 560);
         Assert.Equal(new Phase.Picker(1), model.Phase);
         Assert.False(model.Drop(Files));
-        Assert.Equal(new Phase.Refused("MacBook Air", "需要重新配对"), model.Phase);
+        Assert.Equal(new Phase.Refused("MacBook Air", NeedsRepair: true), model.Phase);
         Assert.Empty(transfers.Sent);
     }
 

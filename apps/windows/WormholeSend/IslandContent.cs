@@ -28,22 +28,26 @@ abstract class PhaseContent : DockPanel
         // Its content is 24 high, not 28 as the other status lines.
         Phase.Unavailable u => new StatusLine(Glyphs.NoNetwork, Palette.Secondary, u.Text) { Height = 24 },
         Phase.Sending when model.Transfer is { } t =>
-            new ProgressContent(t.Device, $"发送到 {t.Device.Name}", model.CancelTransfer),
+            new ProgressContent(t.Device, L.T($"发送到 {t.Device.Name}", $"Sending to {t.Device.Name}", $"{t.Device.Name} に送信中"), model.CancelTransfer),
         Phase.Queued when compactQueued => new CompactQueued(),
         Phase.Queued q => new QueuedContent(q.Position, model.CancelTransfer),
         Phase.AwaitingAcceptance a => new AwaitingContent(a.Alias, model.CancelTransfer),
         Phase.Done when model.Transfer is { } t =>
-            new StatusLine(Glyphs.CheckFilled, Palette.Success, $"已送达 {t.Device.Name}", t.Label),
+            new StatusLine(Glyphs.CheckFilled, Palette.Success, L.T($"已送达 {t.Device.Name}", $"Delivered to {t.Device.Name}", $"{t.Device.Name} に送信しました"), t.Label),
         Phase.Failed f => new FailedContent(f.Reason, f.CanRetry ? model.Retry : null),
-        Phase.Refused r => new StatusLine(Glyphs.Blocked, Palette.Warning, $"{r.Name} {r.Reason}，未发送"),
+        Phase.Refused { NeedsRepair: true } r => new StatusLine(Glyphs.Blocked, Palette.Warning,
+            L.T($"{r.Name} 需要重新配对，未发送", $"{r.Name} needs re-pairing. Not sent", $"{r.Name} は再ペアリングが必要です。送信していません")),
+        Phase.Refused r => new StatusLine(Glyphs.Blocked, Palette.Warning,
+            L.T($"{r.Name} 离线，未发送", $"{r.Name} is offline. Not sent", $"{r.Name} はオフラインです。送信していません")),
         Phase.Receiving when model.Transfer is { } t => new ReceivingContent(t),
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
         Phase.PairRequest p => new PairRequestContent(p, model.AnswerPair),
         Phase.ReceiveRequest r => new ReceiveRequestContent(r, model),
-        Phase.PairWaiting p => new StatusLine(Glyphs.Clock, Palette.Secondary, $"等待 {p.Alias} 确认…"),
-        Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text, n.Detail),
-        Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text, n.Detail),
-        Phase.Interrupted i => new StatusLine(Glyphs.WarningFilled, Palette.Warning, "传输中断", i.Reason),
+        Phase.PairWaiting p => new StatusLine(Glyphs.Clock, Palette.Secondary, L.T($"等待 {p.Alias} 确认…", $"Waiting for {p.Alias} to confirm…", $"{p.Alias} の確認を待っています…")),
+        // A notice's detail is the start of a text: it gives way at its end.
+        Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text, n.Detail, trimEnd: true),
+        Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text, n.Detail, trimEnd: true),
+        Phase.Interrupted i => new StatusLine(Glyphs.WarningFilled, Palette.Warning, L.T("传输中断", "Transfer interrupted", "転送が中断されました"), i.Reason),
         _ => new EmptyContent(),
     };
 }
@@ -78,8 +82,8 @@ sealed class TargetContent : PhaseContent
         Children.Add(strip);
 
         var titles = Ui.Column(3,
-            Ui.Text($"松手发送到 {device.Name}", 14, Palette.Text, FontWeights.SemiBold),
-            Ui.Text("默认设备", 11, Palette.Secondary));
+            Ui.Text(L.T($"松手发送到 {device.Name}", $"Release to send to {device.Name}", $"離すと {device.Name} に送信"), 14, Palette.Text, FontWeights.SemiBold),
+            Ui.Text(L.T("默认设备", "Default device", "既定のデバイス"), 11, Palette.Secondary));
         titles.VerticalAlignment = VerticalAlignment.Center;
         var row = Ui.Row(12, new Avatar(device, 44, highlighted: true), titles);
         row.VerticalAlignment = VerticalAlignment.Top;
@@ -107,10 +111,10 @@ sealed class MoreStrip : Border
 
         var dock = new DockPanel();
         dock.Children.Add(Ui.Dock(faces, Dock.Left));
-        var hint = Ui.Row(4, Ui.Text("往下拖动选择", 11, Palette.Secondary), Ui.Icon(Glyphs.ChevronDown, 10, Palette.Secondary));
+        var hint = Ui.Row(4, Ui.Text(L.T("往下拖动选择", "Drag down to choose", "下にドラッグして選択"), 11, Palette.Secondary), Ui.Icon(Glyphs.ChevronDown, 10, Palette.Secondary));
         hint.VerticalAlignment = VerticalAlignment.Center;
         dock.Children.Add(Ui.Dock(hint, Dock.Right));
-        var title = Ui.Text("其他设备", 11.5, Palette.StripText, FontWeights.Medium);
+        var title = Ui.Text(L.T("其他设备", "Other devices", "その他のデバイス"), 11.5, Palette.StripText, FontWeights.Medium);
         title.Margin = new Thickness(8, 0, 4, 0);
         dock.Children.Add(title);
         Child = dock;
@@ -124,7 +128,7 @@ sealed class SingleTargetContent : PhaseContent
         var avatar = Ui.Dock(new Avatar(device, 50, highlighted: true), Dock.Left);
         avatar.Margin = new Thickness(0, 0, 14, 0);
         var titles = Ui.Column(4,
-            Ui.Text($"松手发送到 {device.Name}", 15, Palette.Text, FontWeights.SemiBold),
+            Ui.Text(L.T($"松手发送到 {device.Name}", $"Release to send to {device.Name}", $"離すと {device.Name} に送信"), 15, Palette.Text, FontWeights.SemiBold),
             new MiddleText(label, 11.5, Palette.Secondary));
         titles.VerticalAlignment = VerticalAlignment.Center;
         // A dock rather than a row, so the label knows its width.
@@ -141,7 +145,7 @@ sealed class PickerContent : PhaseContent
 
     public PickerContent(IReadOnlyList<Device> devices, string label)
     {
-        var title = Ui.Dock(new MiddleText($"把 {label} 发送到", 11, Palette.Secondary), Dock.Top);
+        var title = Ui.Dock(new MiddleText(L.T($"把 {label} 发送到", $"Send {label} to", $"{label} の送信先"), 11, Palette.Secondary), Dock.Top);
         title.Margin = new Thickness(4, 0, 0, 6);
         Children.Add(title);
 
@@ -190,13 +194,15 @@ sealed class DeviceTile : Border
         Child = column;
     }
 
-    string Status => device.LocalSend ? "LocalSend" : device.NeedsRepair ? "需重新配对" : (device.Online, device.IsDefault) switch
-    {
-        (true, true) => "在线 · 默认",
-        (true, false) => "在线",
-        (false, true) => "离线 · 默认",
-        _ => "离线",
-    };
+    string Status => device.LocalSend ? "LocalSend"
+        : device.NeedsRepair ? L.T("需重新配对", "Needs re-pairing", "再ペアリングが必要")
+        : (device.Online, device.IsDefault) switch
+        {
+            (true, true) => L.T("在线 · 默认", "Online · Default", "オンライン · 既定"),
+            (true, false) => L.T("在线", "Online", "オンライン"),
+            (false, true) => L.T("离线 · 默认", "Offline · Default", "オフライン · 既定"),
+            _ => L.T("离线", "Offline", "オフライン"),
+        };
 
     public bool Hot
     {
@@ -215,14 +221,17 @@ sealed class DeviceTile : Border
 
 sealed class StatusLine : PhaseContent
 {
-    public StatusLine(string glyph, Brush color, string text, string? trailing = null)
+    /// `trailing` gives way in the middle (a label keeps "等 3 个文件"), or
+    /// at its end.
+    public StatusLine(string glyph, Brush color, string text, string? trailing = null, bool trimEnd = false)
     {
         var icon = Ui.Dock(Ui.Icon(glyph, 17, color), Dock.Left);
         icon.Margin = new Thickness(0, 0, 10, 0);
         Children.Add(icon);
         if (trailing is not null)
         {
-            var label = Ui.Dock(Ui.Centered(new MiddleText(trailing, 11, Palette.Secondary)), Dock.Right);
+            FrameworkElement shortened = trimEnd ? Ui.Text(trailing, 11, Palette.Secondary) : new MiddleText(trailing, 11, Palette.Secondary);
+            var label = Ui.Dock(Ui.Centered(shortened), Dock.Right);
             label.Margin = new Thickness(8, 0, 0, 0);
             label.MaxWidth = 140;
             Children.Add(label);
@@ -281,7 +290,7 @@ sealed class QueuedContent : PhaseContent
         var cancel = Ui.Dock(new CancelButton(onCancel), Dock.Right);
         cancel.Margin = new Thickness(4, 0, 0, 0);
         Children.Add(cancel);
-        var column = Ui.Column(2, title, Ui.Text("对方正在接收其他设备的文件，轮到后自动发送", 11, Palette.Secondary));
+        var column = Ui.Column(2, title, Ui.Text(L.T("对方正在接收其他设备的文件，轮到后自动发送", "Sends once it's done receiving", "相手の受信が終わると自動で送信します"), 11, Palette.Secondary));
         column.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(column);
         VerticalAlignment = VerticalAlignment.Top;
@@ -294,7 +303,7 @@ sealed class QueuedContent : PhaseContent
         if (phase is Phase.Queued queued) SetPosition(queued.Position);
     }
 
-    void SetPosition(int position) => title.Text = $"排队中 · 前面还有 {position} 个";
+    void SetPosition(int position) => title.Text = L.T($"排队中 · 前面还有 {position} 个", $"Queued · {position} ahead", $"順番待ち · あと {position} 件");
 }
 
 /// Sending to a LocalSend device whose user hasn't accepted yet.
@@ -309,8 +318,8 @@ sealed class AwaitingContent : PhaseContent
         cancel.Margin = new Thickness(4, 0, 0, 0);
         Children.Add(cancel);
         var column = Ui.Column(2,
-            Ui.Text($"等待 {alias} 接收…", 13, Palette.Text, FontWeights.Medium),
-            Ui.Text("对方用 LocalSend，接收后开始发送", 11, Palette.Secondary));
+            Ui.Text(L.T($"等待 {alias} 接收…", $"Waiting for {alias} to accept…", $"{alias} の受信を待っています…"), 13, Palette.Text, FontWeights.Medium),
+            Ui.Text(L.T("对方用 LocalSend，接收后开始发送", "Starts once they accept in LocalSend", "相手が LocalSend で受信すると送信を開始します"), 11, Palette.Secondary));
         column.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(column);
         VerticalAlignment = VerticalAlignment.Top;
@@ -325,7 +334,7 @@ sealed class CompactQueued : PhaseContent
     {
         Children.Add(Ui.Dock(Ui.Icon(Glyphs.Clock, 12, Palette.Warning), Dock.Left));
         Children.Add(Ui.Dock(new Ellipse { Width = 6, Height = 6, Fill = Palette.Warning, VerticalAlignment = VerticalAlignment.Center }, Dock.Right));
-        var title = Ui.Text("排队中", 11.5, Palette.Text, FontWeights.Medium);
+        var title = Ui.Text(L.T("排队中", "Queued", "順番待ち"), 11.5, Palette.Text, FontWeights.Medium);
         title.HorizontalAlignment = HorizontalAlignment.Center;
         Children.Add(title);
         VerticalAlignment = VerticalAlignment.Center;
@@ -339,8 +348,8 @@ sealed class FailedContent : PhaseContent
         var icon = Ui.Dock(Ui.Icon(Glyphs.WarningFilled, 16, Palette.Warning), Dock.Left);
         icon.Margin = new Thickness(0, 0, 10, 0);
         Children.Add(icon);
-        if (onRetry is not null) Children.Add(Ui.Dock(new PillButton("重试", onRetry), Dock.Right));
-        Children.Add(Ui.Centered(Ui.Text($"发送失败：{reason}", 13, Palette.Text, FontWeights.Medium)));
+        if (onRetry is not null) Children.Add(Ui.Dock(new PillButton(L.T("重试", "Retry", "再試行"), onRetry), Dock.Right));
+        Children.Add(Ui.Centered(Ui.Text(L.T($"发送失败：{reason}", $"Couldn't send: {reason}", $"送信失敗：{reason}"), 13, Palette.Text, FontWeights.Medium)));
         VerticalAlignment = VerticalAlignment.Top;
         Height = 28;
     }
@@ -360,7 +369,7 @@ sealed class ReceivingContent : PhaseContent
         header.Children.Add(avatar);
         header.Children.Add(Ui.Dock(percent, Dock.Right));
         header.Children.Add(Ui.Column(2,
-            Ui.Text($"{transfer.Device.Name} 发来 {transfer.FileCount} 个文件", 13, Palette.Text, FontWeights.Medium),
+            Ui.Text(L.T($"{transfer.Device.Name} 发来 {transfer.FileCount} 个文件", $"{transfer.Device.Name} is sending {L.Files(transfer.FileCount)}", $"{transfer.Device.Name} から {transfer.FileCount} 個のファイル"), 13, Palette.Text, FontWeights.Medium),
             detail));
         Children.Add(header);
         bar.Margin = new Thickness(0, 10, 0, 0);
@@ -374,8 +383,8 @@ sealed class ReceivingContent : PhaseContent
         percent.Text = Ui.FormatPercent(model.Progress);
         // Design doc 2.2: senders waiting in this device's queue.
         detail.Text = model.WaitingCount > 0
-            ? $"还有 {model.WaitingCount} 个设备等待发送"
-            : $"已配对 · 自动保存到 {model.SaveDirLabel}";
+            ? L.T($"还有 {model.WaitingCount} 个设备等待发送", $"{model.WaitingCount} more {L.Plural(model.WaitingCount, "device", "devices")} waiting to send", $"ほかに {model.WaitingCount} 台が送信待ちです")
+            : L.T($"已配对 · 自动保存到 {model.SaveDirLabel}", $"Paired · Saving to {model.SaveDirLabel}", $"ペアリング済み · {model.SaveDirLabel} に保存");
     }
 }
 
@@ -384,10 +393,10 @@ sealed class ReceivedContent : PhaseContent
     public ReceivedContent(Transfer transfer, Action onReveal)
     {
         var header = Ui.Dock(new DockPanel(), Dock.Top);
-        header.Children.Add(Ui.Dock(new LinkButton("在资源管理器中显示", onReveal), Dock.Right));
+        header.Children.Add(Ui.Dock(new LinkButton(L.T("在资源管理器中显示", "Show in File Explorer", "エクスプローラーで表示"), onReveal), Dock.Right));
         header.Children.Add(Ui.Row(6,
             Ui.Icon(Glyphs.CheckFilled, 14, Palette.Success),
-            Ui.Text($"已收到 {transfer.FileCount} 个文件", 13, Palette.Text, FontWeights.Medium)));
+            Ui.Text(L.T($"已收到 {transfer.FileCount} 个文件", $"Received {L.Files(transfer.FileCount)}", $"{transfer.FileCount} 個のファイルを受信しました"), 13, Palette.Text, FontWeights.Medium)));
         Children.Add(header);
 
         var chips = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), VerticalAlignment = VerticalAlignment.Top };
@@ -395,7 +404,7 @@ sealed class ReceivedContent : PhaseContent
             chips.Children.Add(new FileChip(path) { Margin = new Thickness(index == 0 ? 0 : 6, 0, 0, 0) });
         if (transfer.Files.Count > 3)
         {
-            var more = Ui.Text($"等 {transfer.Files.Count} 项", 11, Palette.Secondary);
+            var more = Ui.Text(L.T($"等 {transfer.Files.Count} 项", $"{transfer.Files.Count} items", $"全 {transfer.Files.Count} 件"), 11, Palette.Secondary);
             more.Margin = new Thickness(6, 0, 0, 0);
             chips.Children.Add(more);
         }
@@ -409,8 +418,8 @@ sealed class PairRequestContent : PhaseContent
     public PairRequestContent(Phase.PairRequest request, Action<bool> answer)
     {
         var buttons = Ui.Row(8,
-            new PillButton("拒绝", () => answer(false)),
-            new PillButton("配对", () => answer(true), Palette.Accent));
+            new PillButton(L.T("拒绝", "Decline", "拒否"), () => answer(false)),
+            new PillButton(L.T("配对", "Pair", "ペアリング"), () => answer(true), Palette.Accent));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.Margin = new Thickness(0, 10, 0, 0);
         Children.Add(Ui.Dock(buttons, Dock.Bottom));
@@ -421,8 +430,8 @@ sealed class PairRequestContent : PhaseContent
         code.Margin = new Thickness(12, 0, 0, 0);
         Children.Add(Ui.Dock(code, Dock.Right));
         var titles = Ui.Column(2,
-            Ui.Text($"{request.Alias} 请求配对", 13, Palette.Text, FontWeights.Medium),
-            Ui.Text("两边显示的数字一致才配对", 11, Palette.Secondary));
+            Ui.Text(L.T($"{request.Alias} 请求配对", $"{request.Alias} wants to pair", $"{request.Alias} がペアリングを求めています"), 13, Palette.Text, FontWeights.Medium),
+            Ui.Text(L.T("两边显示的数字一致才配对", "Pair only if both show the same number", "両方の数字が同じならペアリング"), 11, Palette.Secondary));
         titles.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(titles);
         VerticalAlignment = VerticalAlignment.Top;
@@ -437,7 +446,7 @@ sealed class ReceiveRequestContent : PhaseContent
     public ReceiveRequestContent(Phase.ReceiveRequest request, IslandModel model)
     {
         var text = request.Text is not null;
-        var declineTitle = text ? "忽略" : "拒绝";
+        var declineTitle = text ? L.T("忽略", "Ignore", "無視") : L.T("拒绝", "Decline", "拒否");
         var decline = new PillButton(declineTitle, () => model.AnswerReceive(false));
         void Count() => decline.Title = model.SecondsLeft(request.RequestId) is { } seconds ? $"{declineTitle} {seconds}s" : declineTitle;
         Count();
@@ -447,7 +456,7 @@ sealed class ReceiveRequestContent : PhaseContent
         Unloaded += (_, _) => countdown.Stop();
         var buttons = Ui.Row(8,
             decline,
-            new PillButton(text ? "复制" : "接收", () => model.AnswerReceive(true), Palette.Accent));
+            new PillButton(text ? L.T("复制", "Copy", "コピー") : L.T("接收", "Accept", "受信"), () => model.AnswerReceive(true), Palette.Accent));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.Margin = new Thickness(0, 10, 0, 0);
         Children.Add(Ui.Dock(buttons, Dock.Bottom));
@@ -474,7 +483,8 @@ sealed class ReceiveRequestContent : PhaseContent
             detail = new MiddleText(request.Label, 11, Palette.Secondary) { HorizontalAlignment = HorizontalAlignment.Left };
         }
         var titles = Ui.Column(text ? 4 : 2,
-            Ui.Text(text ? $"{request.Alias} 发来一段文字" : $"{request.Alias} 想发送", 13, Palette.Text, FontWeights.Medium),
+            Ui.Text(text ? L.T($"{request.Alias} 发来一段文字", $"{request.Alias} sent a text message", $"{request.Alias} からテキストメッセージ")
+                : L.T($"{request.Alias} 想发送", $"{request.Alias} wants to send", $"{request.Alias} から受信リクエスト"), 13, Palette.Text, FontWeights.Medium),
             detail);
         titles.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(titles);

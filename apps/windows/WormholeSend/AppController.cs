@@ -23,6 +23,8 @@ interface ISession
     void ReloadDevices();
     void SettingsSaved(JsonNode? settings);
     void OpenPairing();
+    /// A language, or null for the system's.
+    void ChangeLanguage(UiLanguage? language);
 }
 
 /// Owns one island window per screen, the tray icon, the core and the
@@ -94,6 +96,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
         }
         model.Devices = [];
         tray = new TrayIcon(BuildMenu, OpenSettings);
+        if (options.Menu) ShowMenuForCheck(options.Snapshot);
         var home = options.Home ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WormholeSend");
         // No identity yet: the first run, which starts with the guide.
         if (File.Exists(Path.Combine(home, "identity.pem")))
@@ -119,6 +122,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
         if (options.Home is { } home) config["home"] = home;
         if (options.Port is { } port) config["port"] = port;
         if (alias is not null) config["alias"] = alias;
+        config["language"] = L.Code(L.Current);
         var dispatcher = Application.Current.Dispatcher;
         try
         {
@@ -133,9 +137,9 @@ sealed class AppController(Options options) : IDragTarget, ISession
         }
         catch (Exception e) when (e is CoreException or DllNotFoundException or EntryPointNotFoundException)
         {
-            var message = e is CoreException ? e.Message : "找不到核心库 wormhole.dll";
+            var message = e is CoreException ? e.Message : L.T("找不到核心库 wormhole.dll", "wormhole.dll is missing", "wormhole.dll が見つかりません");
             Log.Write("core failed to start: " + message);
-            if (alias is null) tray?.Notify("Wormhole Send 无法启动", message);
+            if (alias is null) tray?.Notify(L.T("Wormhole Send 无法启动", "Wormhole Send can't start", "Wormhole Send を起動できません"), message);
             return message;
         }
     }
@@ -165,7 +169,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
                 break;
             case DeviceUnpaired unpaired:
                 ReloadDevices();
-                model.ShowNotice($"{unpaired.Alias} 已解除配对", success: false);
+                model.ShowNotice(L.T($"{unpaired.Alias} 已解除配对", $"{unpaired.Alias} unpaired", $"{unpaired.Alias} がペアリングを解除しました"), success: false);
                 break;
         }
     }
@@ -200,7 +204,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
     {
         var downloads = Native.KnownFolder(Native.FOLDERID_Downloads);
         return downloads is not null && dir.StartsWith(downloads, StringComparison.OrdinalIgnoreCase)
-            ? "下载" + dir[downloads.Length..]
+            ? L.T("下载", "Downloads", "ダウンロード") + dir[downloads.Length..]
             : dir;
     }
 
@@ -284,11 +288,35 @@ sealed class AppController(Options options) : IDragTarget, ISession
         settingsWindow.Activate();
     }
 
+    /// The core's messages switch at once; the islands and the settings
+    /// window are built again in the new language (the others when they
+    /// next open).
+    public void ChangeLanguage(UiLanguage? language)
+    {
+        L.Choice = language;
+        Log.Write($"language {L.Code(L.Current)}");
+        try
+        {
+            core?.Command("language.set", new JsonObject { ["language"] = L.Code(L.Current) });
+        }
+        catch (CoreException e)
+        {
+            Log.Write("language.set: " + e.Message);
+        }
+        SettingsSaved(settings);
+        BuildWindows();
+        if (settingsWindow is { } open)
+        {
+            open.Close();
+            OpenSettings();
+        }
+    }
+
     public void OpenPairing()
     {
         if (core is null)
         {
-            tray?.Notify("Wormhole Send", "服务没有在运行，暂时不能配对");
+            tray?.Notify("Wormhole Send", L.T("服务没有在运行，暂时不能配对", "The services aren't running; you can't pair now", "サービスが動いていないため、今はペアリングできません"));
             return;
         }
         if (pairWindow is null)
@@ -311,20 +339,20 @@ sealed class AppController(Options options) : IDragTarget, ISession
     /// Design doc 7.2.
     IReadOnlyList<MenuEntry> BuildMenu() =>
     [
-        new("默认设备", Glyphs.Star, Submenu: () => model.Devices.Count == 0
-            ? [new MenuEntry("还没有配对设备", Enabled: false)]
+        new(L.T("默认设备", "Default device", "既定のデバイス"), Glyphs.Star, Submenu: () => model.Devices.Count == 0
+            ? [new MenuEntry(L.T("还没有配对设备", "No paired devices yet", "ペアリングしたデバイスはまだありません"), Enabled: false)]
             : model.Devices.Select(device => new MenuEntry(
                 device.Name, device.Glyph, () => SetDefault(device), Checked: device.IsDefault, Dimmed: !device.Online)).ToList()),
-        new("配对新设备…", Glyphs.Link, OpenPairing, Enabled: core is not null),
-        new("打开接收文件夹", Glyphs.FolderOpen, OpenSaveDir, Enabled: settings is not null),
+        new(L.T("配对新设备…", "Pair a new device…", "新しいデバイスとペアリング…"), Glyphs.Link, OpenPairing, Enabled: core is not null),
+        new(L.T("打开接收文件夹", "Open the receive folder", "受信フォルダを開く"), Glyphs.FolderOpen, OpenSaveDir, Enabled: settings is not null),
         SoundsEntry(),
-        new("设置…", Glyphs.Settings, OpenSettings),
+        new(L.T("设置…", "Settings…", "設定…"), Glyphs.Settings, OpenSettings),
         MenuEntry.Separator,
-        new("退出", Glyphs.Power, Quit),
+        new(L.T("退出", "Exit", "終了"), Glyphs.Power, Quit),
     ];
 
     /// On by default; turning them on plays one.
-    static MenuEntry SoundsEntry() => new("提示音", Glyphs.Volume, () =>
+    static MenuEntry SoundsEntry() => new(L.T("提示音", "Sounds", "サウンド"), Glyphs.Volume, () =>
     {
         Sounds.Enabled = !Sounds.Enabled;
         if (Sounds.Enabled) Sounds.Play(Sound.Sent);
@@ -364,7 +392,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
         ]),
         SoundsEntry(),
         MenuEntry.Separator,
-        new("退出", Glyphs.Power, Quit),
+        new(L.T("退出", "Exit", "終了"), Glyphs.Power, Quit),
     ];
 
     void SetDefault(Device device)

@@ -20,8 +20,9 @@ abstract record Phase
     public sealed record Done() : Phase;
     /// A send failed; `CanRetry` is false when the other user declined it.
     public sealed record Failed(string Reason, bool CanRetry = true) : Phase;
-    /// Released over a device that can't take files ("离线", "需要重新配对").
-    public sealed record Refused(string Name, string Reason = "离线") : Phase;
+    /// Released over a device that can't take files: offline, or it needs
+    /// pairing again.
+    public sealed record Refused(string Name, bool NeedsRepair = false) : Phase;
     public sealed record Receiving() : Phase;
     public sealed record Received() : Phase;
     /// An incoming transfer stopped: the sender cancelled or the connection

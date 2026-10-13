@@ -2,7 +2,8 @@
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-                 Title="欢迎使用 Wormhole Send"
+                 xmlns:l="clr-namespace:WormholeSend"
+                 Title="{x:Static l:S.WelcomeTitle}"
                  Width="520" Height="460" ResizeMode="NoResize"
                  WindowStartupLocation="CenterScreen"
                  WindowBackdropType="Mica"
@@ -17,41 +18,41 @@
 
         <!-- 1. Name -->
         <StackPanel x:Name="NamePage" Grid.Row="1" Margin="32,16,32,0">
-            <ui:TextBlock FontTypography="Title" Text="欢迎使用 Wormhole Send" />
+            <ui:TextBlock FontTypography="Title" Text="{x:Static l:S.WelcomeTitle}" />
             <ui:TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                          Text="把文件拖到屏幕顶部中间，松手就发给你配对过的电脑，对方不用确认。" />
-            <ui:TextBlock Margin="0,28,0,6" FontTypography="BodyStrong" Text="这台电脑的名字" />
+                          Text="{x:Static l:S.WelcomeIntro}" />
+            <ui:TextBlock Margin="0,28,0,6" FontTypography="BodyStrong" Text="{x:Static l:S.ThisComputersName}" />
             <ui:TextBox x:Name="AliasBox" MaxLength="64" />
-            <ui:TextBlock Margin="0,6,0,0" Appearance="Secondary" FontTypography="Caption" Text="其他设备会看到这个名字，以后可以在设置里改。" />
+            <ui:TextBlock Margin="0,6,0,0" Appearance="Secondary" FontTypography="Caption" Text="{x:Static l:S.NameHint}" />
         </StackPanel>
 
         <!-- 2. Network -->
         <StackPanel x:Name="NetworkPage" Grid.Row="1" Margin="32,16,32,0" Visibility="Collapsed">
-            <ui:TextBlock FontTypography="Title" Text="允许网络访问" />
+            <ui:TextBlock FontTypography="Title" Text="{x:Static l:S.AllowNetwork}" />
             <ui:TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                          Text="Wormhole Send 只在局域网里直接传文件，不经过任何服务器。" />
+                          Text="{x:Static l:S.LocalOnly}" />
             <ui:TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                          Text="点“下一步”后，Windows 可能会问是否允许它通过防火墙。请勾选“专用网络”并点“允许”，否则其他设备找不到这台电脑。" />
+                          Text="{x:Static l:S.FirewallHint}" />
             <ui:TextBlock x:Name="NetworkError" Margin="0,16,0,0" Foreground="#FFFF6B6B" TextWrapping="Wrap" Visibility="Collapsed" />
         </StackPanel>
 
         <!-- 3. First device -->
         <StackPanel x:Name="PairPage" Grid.Row="1" Margin="32,16,32,0" Visibility="Collapsed">
-            <ui:TextBlock FontTypography="Title" Text="配对第一台设备" />
+            <ui:TextBlock FontTypography="Title" Text="{x:Static l:S.FirstDevice}" />
             <ui:TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                          Text="在另一台电脑上也打开 Wormhole Send，然后在这里配对。只需要一次，之后互传都不用确认。" />
-            <ui:Button Margin="0,20,0,0" Appearance="Primary" Content="配对新设备…" Click="Pair_Click">
+                          Text="{x:Static l:S.FirstDeviceIntro}" />
+            <ui:Button Margin="0,20,0,0" Appearance="Primary" Content="{x:Static l:S.PairNew}" Click="Pair_Click">
                 <ui:Button.Icon>
                     <ui:SymbolIcon Symbol="Add24" />
                 </ui:Button.Icon>
             </ui:Button>
             <ui:TextBlock x:Name="PairedText" Margin="0,8,0,0" Appearance="Secondary" />
-            <CheckBox x:Name="AutostartBox" Margin="0,24,0,0" Content="开机时启动 Wormhole Send" IsChecked="True" />
+            <CheckBox x:Name="AutostartBox" Margin="0,24,0,0" Content="{x:Static l:S.StartAppWithWindows}" IsChecked="True" />
         </StackPanel>
 
         <StackPanel Grid.Row="2" Margin="32,0,32,24" HorizontalAlignment="Right" Orientation="Horizontal">
-            <ui:Button x:Name="SkipButton" Content="跳过" Click="Finish_Click" Visibility="Collapsed" />
-            <ui:Button x:Name="NextButton" Margin="8,0,0,0" Appearance="Primary" Content="下一步" Click="Next_Click" />
+            <ui:Button x:Name="SkipButton" Content="{x:Static l:S.Skip}" Click="Finish_Click" Visibility="Collapsed" />
+            <ui:Button x:Name="NextButton" Margin="8,0,0,0" Appearance="Primary" Content="{x:Static l:S.Next}" Click="Next_Click" />
         </StackPanel>
     </Grid>
 </ui:FluentWindow>

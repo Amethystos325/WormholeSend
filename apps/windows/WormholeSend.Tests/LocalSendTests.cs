@@ -127,7 +127,7 @@ public class LocalSendTests
         model.Handle(Request(text: text));
         model.AnswerReceive(true);
         Assert.Equal([text], copied);
-        Assert.Equal(new Phase.Notice("已复制到剪贴板", true, "明天下午三点在 3 楼…"), model.Phase);
+        Assert.Equal(new Phase.Notice("已复制到剪贴板", true, "明天下午三点在 3 楼会议室开评审会"), model.Phase);
     }
 
     [Fact]

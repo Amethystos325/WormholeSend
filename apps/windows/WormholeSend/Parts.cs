@@ -268,7 +268,7 @@ sealed class CancelButton : Pressable
     public CancelButton(Action action)
     {
         Child = Ui.Icon(Glyphs.CloseFilled, 16, Palette.Tertiary);
-        ToolTip = "取消";
+        ToolTip = L.T("取消", "Cancel", "キャンセル");
         VerticalAlignment = VerticalAlignment.Center;
         Click += action;
     }

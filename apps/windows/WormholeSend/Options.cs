@@ -11,6 +11,7 @@ namespace WormholeSend;
 ///     WormholeSend --demo picker [--screen external|N] [--devices 1] [--log] [--snapshot out.png]
 ///     WormholeSend --selftest --log
 ///     WormholeSend --fake --menu [--snapshot out.png]
+///     … [--lang en|zh|ja]
 ///
 /// `--home` and `--port` run a second device on the same PC, as with `whs`.
 /// `--fake` uses simulated devices and transfers, switched from the tray
@@ -21,10 +22,11 @@ namespace WormholeSend;
 /// receive-text, copied, awaiting, picker-localsend. `--snapshot` captures the island's window from the
 /// screen once the animation settled, then quits. `--selftest` runs the
 /// drag checks in SelfTest.cs and exits with their result. `--menu` opens
-/// the tray menu with a submenu at the screen center, for a look.
+/// the tray menu with a submenu at the screen center, for a look. `--lang`
+/// shows the interface in a language for this run (not saved).
 sealed record Options(
     string? Demo, string? Screen, int? Devices, bool Log, string? Snapshot, bool SelfTest,
-    bool FakeData, string? Home, int? Port, bool Menu)
+    bool FakeData, string? Home, int? Port, bool Menu, string? Lang)
 {
     /// Simulated devices and transfers instead of the core.
     public bool Fake => FakeData || Demo is not null || SelfTest;
@@ -46,7 +48,8 @@ sealed record Options(
             args.Contains("--fake"),
             Value("--home") is { } home ? Path.GetFullPath(home) : null,
             int.TryParse(Value("--port"), out var port) ? port : null,
-            args.Contains("--menu"));
+            args.Contains("--menu"),
+            Value("--lang"));
     }
 }
 
@@ -75,13 +78,14 @@ static class Demo
         if (options.Devices is { } count) model.Devices = Device.Samples.Take(count).ToList();
         if (options.Demo is not { } name) return;
         app.ActivateScreen(options.Screen);
-        var files = new[] { @"C:\Users\Public\Documents\季度报告.pdf" };
-        var sample = new Transfer(Device.Samples[0], files, "季度报告.pdf");
+        var fileName = L.T("季度报告.pdf", "Quarterly report.pdf", "四半期レポート.pdf");
+        var files = new[] { @"C:\Users\Public\Documents\" + fileName };
+        var sample = new Transfer(Device.Samples[0], files, fileName);
 
         // Let the island grow out of its idle size, as it would for real.
         After(300, () =>
         {
-            model.DragLabel = "季度报告.pdf";
+            model.DragLabel = fileName;
             switch (name)
             {
                 case "hint": model.Phase = new Phase.Hint(); break;
@@ -92,7 +96,7 @@ static class Demo
                     model.Devices = [Device.Samples[0]];
                     model.Phase = new Phase.Picker(0);
                     break;
-                case "unavailable": model.Phase = new Phase.Unavailable("没有在线的设备"); break;
+                case "unavailable": model.Phase = new Phase.Unavailable(L.T("没有在线的设备", "No devices online", "オンラインのデバイスがありません")); break;
                 case "sending":
                     model.Transfer = sample;
                     model.Progress = 0.45;
@@ -118,7 +122,7 @@ static class Demo
                     break;
                 case "failed":
                     model.Transfer = sample;
-                    model.Phase = new Phase.Failed("网络中断");
+                    model.Phase = new Phase.Failed(L.T("网络中断", "The network dropped", "ネットワークが切断されました"));
                     break;
                 case "refused": model.Phase = new Phase.Refused("iPad"); break;
                 case "receiving":
@@ -132,18 +136,20 @@ static class Demo
                 case "pair-request": model.Phase = new Phase.PairRequest("demo", "MacBook Air", "482019"); break;
                 // As the core reports them, so the decline button counts down.
                 case "receive-request":
-                    model.Handle(new ReceiveRequest("demo", "pixel", "Pixel 8", "mobile", "IMG_0001.jpg 等 3 个文件", 3, 8_400_000, null));
+                    model.Handle(new ReceiveRequest("demo", "pixel", "Pixel 8", "mobile", L.T("IMG_0001.jpg 等 3 个文件", "IMG_0001.jpg and 2 more files", "IMG_0001.jpg など 3 個のファイル"), 3, 8_400_000, null));
                     break;
                 case "receive-text":
-                    model.Handle(new ReceiveRequest("demo", "pixel", "Pixel 8", "mobile", "一段文字", 1, 0, SampleText));
+                    model.Handle(new ReceiveRequest("demo", "pixel", "Pixel 8", "mobile", L.T("一段文字", "Text message", "テキストメッセージ"), 1, 0, SampleText));
                     break;
-                case "copied": model.Phase = new Phase.Notice("已复制到剪贴板", true, IslandModel.Preview(SampleText)); break;
+                case "copied":
+                    model.Phase = new Phase.Notice(L.T("已复制到剪贴板", "Copied", "コピーしました"), true, IslandModel.Preview(SampleText));
+                    break;
                 case "awaiting": model.Phase = new Phase.AwaitingAcceptance("Pixel 8"); break;
                 case "picker-localsend":
                     model.LocalSendDevices = Device.LocalSendSamples;
                     model.Phase = new Phase.Picker(3);
                     break;
-                case "notice": model.Phase = new Phase.Notice("已与 MacBook Air 配对", Success: true); break;
+                case "notice": model.Phase = new Phase.Notice(L.T("已与 MacBook Air 配对", "Paired with MacBook Air", "MacBook Air とペアリングしました"), Success: true); break;
                 default:
                     Log.Write($"Unknown demo phase: {name}");
                     break;
@@ -153,7 +159,10 @@ static class Demo
     }
 
     /// A text message from a LocalSend device, for the demos and `--fake`.
-    public const string SampleText = "明天下午三点在 3 楼会议室开评审会，记得带上投影转接头和上周的评审记录，会后一起把发布日期定下来。";
+    public static string SampleText => L.T(
+        "明天下午三点在 3 楼会议室开评审会，记得带上投影转接头和上周的评审记录，会后一起把发布日期定下来。",
+        "Review at 3 pm tomorrow in the room on the 3rd floor. Bring the projector adapter and last week's notes; we'll set the release date afterwards.",
+        "明日の午後 3 時から 3 階の会議室でレビューです。プロジェクターの変換アダプターと先週の議事録を持ってきてください。終わったらリリース日を決めましょう。");
 
     static void After(int milliseconds, Action action)
     {

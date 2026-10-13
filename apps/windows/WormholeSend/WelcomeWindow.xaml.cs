@@ -20,6 +20,8 @@ public partial class WelcomeWindow : FluentWindow
         this.session = session;
         this.start = start;
         InitializeComponent();
+        Language = L.Xml;
+        FontFamily = Fonts.Ui;
         AppIcon.Show(Bar, this);
         SystemThemeWatcher.Watch(this);
         AliasBox.Text = System.Net.Dns.GetHostName();
@@ -49,7 +51,7 @@ public partial class WelcomeWindow : FluentWindow
                 NetworkError.Visibility = Visibility.Collapsed;
                 if (await start(Alias) is { } error)
                 {
-                    NetworkError.Text = $"无法启动：{error}";
+                    NetworkError.Text = L.T($"无法启动：{error}", $"Couldn't start: {error}", $"起動できません：{error}");
                     NetworkError.Visibility = Visibility.Visible;
                     NextButton.IsEnabled = true;
                     return;
@@ -58,7 +60,7 @@ public partial class WelcomeWindow : FluentWindow
                 NetworkPage.Visibility = Visibility.Collapsed;
                 PairPage.Visibility = Visibility.Visible;
                 SkipButton.Visibility = Visibility.Visible;
-                NextButton.Content = "完成";
+                NextButton.Content = L.T("完成", "Done", "完了");
                 page = 2;
                 ShowPaired();
                 break;
@@ -71,7 +73,7 @@ public partial class WelcomeWindow : FluentWindow
     void ShowPaired()
     {
         var names = session.Devices.Select(d => d.Name).ToList();
-        PairedText.Text = names.Count == 0 ? "" : $"已配对：{string.Join("、", names)}";
+        PairedText.Text = names.Count == 0 ? "" : L.T($"已配对：{string.Join("、", names)}", $"Paired: {string.Join(", ", names)}", $"ペアリング済み：{string.Join("、", names)}");
         SkipButton.Visibility = names.Count == 0 && page == 2 ? Visibility.Visible : Visibility.Collapsed;
     }
 

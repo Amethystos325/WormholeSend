@@ -45,7 +45,7 @@ sealed unsafe partial class Core : IDisposable
     /// CoreException with a message for the user.
     public JsonNode? Command(string name, JsonObject? arguments = null)
     {
-        if (handle == IntPtr.Zero) throw new CoreException("核心没有启动");
+        if (handle == IntPtr.Zero) throw new CoreException(L.T("核心没有启动", "The core isn't running", "コアが起動していません"));
         var command = arguments ?? new JsonObject();
         command["command"] = name;
         return Unwrap(Take(wh_command(handle, command.ToJsonString())));
@@ -92,7 +92,7 @@ sealed unsafe partial class Core : IDisposable
     {
         var json = JsonNode.Parse(response);
         if (json?["ok"]?.GetValue<bool>() == true) return json["result"];
-        throw new CoreException(json?["error"]?.GetValue<string>() ?? "核心没有返回结果");
+        throw new CoreException(json?["error"]?.GetValue<string>() ?? L.T("核心没有返回结果", "The core returned nothing", "コアから結果が返りませんでした"));
     }
 
     [LibraryImport(Library)]
