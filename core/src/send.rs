@@ -519,7 +519,7 @@ async fn locate(inner: &Arc<Inner>, device: &Target) -> Option<HttpChannel> {
 
     tokio::spawn({
         let inner = inner.clone();
-        async move { inner.discovery.announce().await }
+        async move { inner.announce().await }
     });
     let deadline = tokio::time::Instant::now() + ANNOUNCE_WAIT;
     while tokio::time::Instant::now() < deadline {

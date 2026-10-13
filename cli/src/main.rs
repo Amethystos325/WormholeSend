@@ -118,6 +118,15 @@ enum TrustCommand {
 
 #[tokio::main]
 async fn main() {
+    // For debugging: WHS_LOG=debug (or a filter such as
+    // "localsend=debug,wormhole_core=debug") prints the core's and the
+    // localsend crate's logs to stderr.
+    if let Ok(filter) = std::env::var("WHS_LOG") {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+            .with_writer(std::io::stderr)
+            .init();
+    }
     let cli = Cli::parse();
     match run(cli).await {
         Ok(code) => std::process::exit(code),

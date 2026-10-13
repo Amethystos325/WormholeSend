@@ -137,6 +137,7 @@ impl Receiver {
     }
 
     fn on_server_event(&mut self, event: ServerEventV2) {
+        tracing::debug!("{}", describe(&event));
         match event {
             // Peers answer this device's announcement by registering here.
             ServerEventV2::Register { ip, info } => self.inner.confirm_device(ip.to_string(), info),
@@ -596,6 +597,23 @@ impl Receiver {
             }
         }
         paths
+    }
+}
+
+/// A server event in one line, for the debug log.
+fn describe(event: &ServerEventV2) -> String {
+    match event {
+        ServerEventV2::Register { ip, .. } => format!("register from {ip}"),
+        ServerEventV2::PrepareUpload { ip, files, cert_fingerprint, .. } => format!(
+            "prepare-upload from {ip}: {} files, client certificate {}",
+            files.len(),
+            if cert_fingerprint.is_some() { "verified" } else { "missing" }
+        ),
+        ServerEventV2::PrepareUploadAborted { session_id } => format!("prepare-upload aborted: {session_id}"),
+        ServerEventV2::FileUpload { session_id, file_id, .. } => format!("upload {session_id}/{file_id}"),
+        ServerEventV2::SessionEnd { session_id, reason } => format!("session {session_id} ended: {reason:?}"),
+        ServerEventV2::CancelReceived { ip, session_id } => format!("cancel from {ip}: {session_id}"),
+        ServerEventV2::ListenerFailed { error } => format!("listener failed: {error}"),
     }
 }
 

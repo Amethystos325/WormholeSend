@@ -40,6 +40,15 @@ const PROBE_INTERVAL: Duration = Duration::from_secs(20);
 /// announce themselves only when their app starts or refreshes.
 const LOCALSEND_PROBE_WINDOW: Duration = Duration::from_secs(10 * 60);
 
+/// Announcements closer together than this are skipped. One is a burst of
+/// datagrams over about 3 s on every interface, and every datagram is
+/// answered with a register request; a LocalSend device keeps each of those
+/// connections open for about a minute. Overlapping bursts from a device on
+/// two interfaces took more than the 8 connections the transfer service
+/// serves per peer, so the peer's next request was reset (an Android phone
+/// sending to a Mac on Ethernet and Wi-Fi).
+const ANNOUNCE_INTERVAL: Duration = Duration::from_secs(5);
+
 /// Which app a device runs, told by the model it announces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -114,6 +123,8 @@ pub(crate) struct Inner {
     pub(crate) answers: mpsc::UnboundedSender<receive::Answer>,
     /// The `receive.request` waiting for an answer, if any.
     pub(crate) asking: Mutex<Option<String>>,
+    /// When this device last announced itself (`Inner::announce`).
+    last_announce: Mutex<Option<Instant>>,
 }
 
 pub(crate) struct ActiveSend {
@@ -184,6 +195,7 @@ impl Node {
             pairings: Pairings::default(),
             answers: answers_tx,
             asking: Mutex::new(None),
+            last_announce: Mutex::new(None),
         });
         let server = Arc::new(server);
 
@@ -209,7 +221,7 @@ impl Node {
         }));
         tasks.push(tokio::spawn({
             let inner = inner.clone();
-            async move { inner.discovery.announce().await }
+            async move { inner.announce().await }
         }));
         tasks.extend(control::server::spawn(inner.clone(), control_listeners)?);
         tasks.push(tokio::spawn({
@@ -248,7 +260,7 @@ impl Node {
     /// LocalSend) devices at their last known addresses; returns once the
     /// probes answered or timed out.
     pub async fn refresh(&self) {
-        tokio::join!(self.inner.discovery.announce(), self.inner.probe_known());
+        tokio::join!(self.inner.announce(), self.inner.probe_known());
     }
 
     /// Paired devices first (the default one on top), then the other devices
@@ -327,7 +339,7 @@ impl Node {
     pub fn refresh_in_background(&self) {
         let inner = self.inner.clone();
         tokio::spawn(async move {
-            tokio::join!(inner.discovery.announce(), inner.probe_known());
+            tokio::join!(inner.announce(), inner.probe_known());
         });
     }
 
@@ -426,6 +438,18 @@ impl Node {
 impl Inner {
     pub(crate) fn emit(&self, event: CoreEvent) {
         let _ = self.events.send(event);
+    }
+
+    /// Announces this device, unless it did within `ANNOUNCE_INTERVAL`.
+    pub(crate) async fn announce(&self) {
+        {
+            let mut last = self.last_announce.lock().unwrap();
+            if last.is_some_and(|at| at.elapsed() < ANNOUNCE_INTERVAL) {
+                return;
+            }
+            *last = Some(Instant::now());
+        }
+        self.discovery.announce().await;
     }
 
     /// The trust store as it is on disk. An unreadable store trusts nobody.

@@ -28,6 +28,8 @@ socket2 = "0.6"
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2.5"
 
