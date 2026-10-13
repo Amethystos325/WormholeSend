@@ -24,7 +24,8 @@ abstract class PhaseContent : DockPanel
             new TargetContent(device, model.Devices.Where(d => !d.IsDefault).ToList()),
         Phase.Picker when model.Devices.Count == 1 => new SingleTargetContent(model.Devices[0], model.DragLabel),
         Phase.Picker => new PickerContent(model.Devices, model.DragLabel),
-        Phase.Unavailable u => new StatusLine(Glyphs.NoNetwork, Palette.Secondary, u.Text),
+        // Its content is 24 high, not 28 as the other status lines.
+        Phase.Unavailable u => new StatusLine(Glyphs.NoNetwork, Palette.Secondary, u.Text) { Height = 24 },
         Phase.Sending when model.Transfer is { } t =>
             new ProgressContent(t.Device, $"发送到 {t.Device.Name}", model.CancelTransfer),
         Phase.Queued when compactQueued => new CompactQueued(),
@@ -52,10 +53,7 @@ sealed class HintContent : PhaseContent
     {
         // As tall as the text looks: the black hole fills about half its grid.
         var icon = new Image { Source = AppIcon.BlackHole, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center };
-        var label = Ui.Text(text, 12.5, Palette.HintText, FontWeights.Medium);
-        // Chinese glyphs sit low in their line; a pixel up they look centered.
-        label.RenderTransform = new TranslateTransform(0, -1);
-        var row = Ui.Row(7, icon, label);
+        var row = Ui.Row(7, icon, Ui.Centered(Ui.Text(text, 12.5, Palette.HintText, FontWeights.Medium)));
         row.HorizontalAlignment = HorizontalAlignment.Center;
         row.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(row);
@@ -221,12 +219,12 @@ sealed class StatusLine : PhaseContent
         Children.Add(icon);
         if (trailing is not null)
         {
-            var label = Ui.Dock(new MiddleText(trailing, 11, Palette.Secondary), Dock.Right);
+            var label = Ui.Dock(Ui.Centered(new MiddleText(trailing, 11, Palette.Secondary)), Dock.Right);
             label.Margin = new Thickness(8, 0, 0, 0);
             label.MaxWidth = 140;
             Children.Add(label);
         }
-        Children.Add(Ui.Text(text, 13, Palette.Text, FontWeights.Medium));
+        Children.Add(Ui.Centered(Ui.Text(text, 13, Palette.Text, FontWeights.Medium)));
         VerticalAlignment = VerticalAlignment.Top;
         Height = 28;
     }
@@ -318,7 +316,7 @@ sealed class FailedContent : PhaseContent
         icon.Margin = new Thickness(0, 0, 10, 0);
         Children.Add(icon);
         Children.Add(Ui.Dock(new PillButton("重试", onRetry), Dock.Right));
-        Children.Add(Ui.Text($"发送失败：{reason}", 13, Palette.Text, FontWeights.Medium));
+        Children.Add(Ui.Centered(Ui.Text($"发送失败：{reason}", 13, Palette.Text, FontWeights.Medium)));
         VerticalAlignment = VerticalAlignment.Top;
         Height = 28;
     }

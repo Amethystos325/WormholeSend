@@ -45,6 +45,14 @@ static class Ui
 
     public static string FormatPercent(double value) => $"{(int)(Math.Clamp(value, 0, 1) * 100)}%";
 
+    /// Chinese glyphs sit low in their lines in the fonts Windows uses; a
+    /// pixel up, a line of them looks centered beside an icon.
+    public static T Centered<T>(T text) where T : UIElement
+    {
+        text.RenderTransform = new TranslateTransform(0, -1);
+        return text;
+    }
+
     public static T Dock<T>(T element, Dock dock) where T : UIElement
     {
         DockPanel.SetDock(element, dock);
