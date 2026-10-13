@@ -27,7 +27,9 @@ Error messages are Chinese and can be shown to the user as they are.
 
 `on_event(ctx, event_json)` is called on one dedicated thread (`wormhole-events`), in order, never concurrently. The string is valid during the call only and belongs to the core. Hand the event to the UI thread asynchronously: `wh_stop` waits for a callback in progress, so a synchronous hop to a UI thread that is inside `wh_stop` would deadlock. Don't call `wh_*` from the callback.
 
-The events and their fields are the table in the design doc (section 4.2), from `core/src/event.rs`: `device.updated`, `pair.incoming`, `pair.code`, `pair.result`, `device.unpaired`, `transfer.started`, `transfer.progress`, `transfer.finished`, `transfer.queued`, `receive.waiting`, `receive.rejected`, `error`. `deviceId` is always the other device's certificate fingerprint.
+The events and their fields are the table in the design doc (section 4.2), from `core/src/event.rs`: `device.updated`, `pair.incoming`, `pair.code`, `pair.result`, `device.unpaired`, `transfer.waiting`, `transfer.started`, `transfer.progress`, `transfer.finished`, `transfer.queued`, `receive.waiting`, `receive.request`, `receive.closed`, `receive.rejected`, `error`. `deviceId` is always the other device's certificate fingerprint.
+
+`device.updated` and the device lists carry `kind`: `"wormhole"` (Wormhole Send; paired devices always are) or `"localsend"` (the LocalSend app, which can't pair; its user, or this one, accepts every transfer). LocalSend devices going online and offline are reported like paired ones, as they can be sent to.
 
 ## Commands
 
@@ -37,15 +39,19 @@ The events and their fields are the table in the design doc (section 4.2), from 
 | --- | --- | --- |
 | `devices.list` | | Paired devices, default first: `[{fingerprint, alias, deviceType, host, port, online, paired, isDefault, needsRepair}]` |
 | `devices.refresh` | | `null`; announces this device and probes paired ones, answers come as `device.updated` |
-| `discover.list` | | Nearby devices that are online (heard from within 60 s) and not paired, same fields; also announces this device, and the answers show on the next call, so call it again while a pairing window is open |
-| `send` | `deviceId`, `paths` | Transfer ID; then `transfer.queued` (receiver busy) / `transfer.started` / `transfer.progress` / `transfer.finished` |
+| `discover.list` | | Nearby Wormhole Send devices that are online (heard from within 60 s) and not paired, same fields plus `kind`; also announces this device, and the answers show on the next call, so call it again while a pairing window is open |
+| `localsend.list` | | LocalSend devices that are online, same fields; also announces this device, as `discover.list` |
+| `send` | `deviceId`, `paths` | Transfer ID; then `transfer.queued` (receiver busy) / `transfer.started` / `transfer.progress` / `transfer.finished`. To a LocalSend device: `transfer.waiting` until its user answers, then `transfer.started` (with what they accepted), or `transfer.finished` with status `declined` and no `transfer.started` |
 | `transfer.cancel` | `transferId` | Whether it was still running |
 | `transfer.retry` | `transferId` | A new transfer ID: the same device and paths again |
 | `pair.start` | `deviceId` (from `discover.list`) | Pairing ID; then `pair.code`, or `pair.result` with `ok: false` and a `reason` when the other device can't be reached, is busy pairing (409) or declined within 30 s (429) |
 | `pair.confirm` | `pairId`, `accept` | `null`; then `pair.result` on both sides |
+| `receive.respond` | `requestId`, `accept` | Whether the request was still waiting for the answer. Accepted files arrive as `transfer.started` (receive); a text message transfers nothing, its `text` came with the request |
 | `device.unpair` | `deviceId` | `{"wasPaired": bool}`; the other device is told in the background, or when it is next seen |
 | `device.setDefault` | `deviceId` | `null` |
 | `settings.get` | | `{alias, saveDir, port, fingerprint, home}` |
 | `settings.set` | `alias?`, `saveDir?` | The new settings plus `"restarting": true`. Saved at once; the services restart in the background (the name is in every announcement), and commands answer "正在重新启动服务" for about a second. Refused while a transfer is running |
 
-An incoming pairing request arrives as `pair.incoming`, then `pair.code`; answer with `pair.confirm`. Requests from devices that are not paired are declined without asking (`receive.rejected`).
+An incoming pairing request arrives as `pair.incoming`, then `pair.code`; answer with `pair.confirm`.
+
+A LocalSend device that wants to send arrives as `receive.request` (`requestId`, `deviceId`, `alias`, `deviceType`, `label` such as "IMG_0001.jpg 等 3 个文件", `files`, `total`, and `text` for a text message); answer with `receive.respond` within a minute. `receive.closed` (`reason`: `timeout`, declined after the minute, or `cancelled` by the sender) withdraws it. One request is asked at a time; meanwhile other LocalSend devices are declined (`receive.rejected`) and paired ones queue. A Wormhole Send device that is not paired is declined without asking (`receive.rejected`).

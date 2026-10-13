@@ -47,7 +47,8 @@ pub(crate) struct Shared {
     /// it (the restart thread may take the node a moment later).
     restarting: AtomicBool,
     events: Mutex<Option<mpsc::Sender<String>>>,
-    /// Transfers in progress (sending, queued or receiving), from the events.
+    /// Transfers in progress (sending, queued, waiting for a LocalSend user,
+    /// receiving) and receive requests not answered yet, from the events.
     active: Mutex<HashSet<String>>,
     /// What each send was given, for `transfer.retry`.
     sends: Mutex<HashMap<String, (String, Vec<PathBuf>)>>,
@@ -208,10 +209,14 @@ impl Shared {
 
     fn observe(&self, event: &CoreEvent) {
         match event {
-            CoreEvent::TransferStarted { id, .. } | CoreEvent::TransferQueued { id, .. } => {
+            CoreEvent::TransferStarted { id, .. }
+            | CoreEvent::TransferQueued { id, .. }
+            | CoreEvent::TransferWaiting { id, .. }
+            | CoreEvent::ReceiveRequest { request_id: id, .. } => {
                 self.active.lock().unwrap().insert(id.clone());
             }
-            CoreEvent::TransferFinished { id, .. } => {
+            // An answered request is removed by `receive.respond`.
+            CoreEvent::TransferFinished { id, .. } | CoreEvent::ReceiveClosed { request_id: id, .. } => {
                 self.active.lock().unwrap().remove(id);
             }
             _ => {}
@@ -261,9 +266,10 @@ impl Drop for Cleared<'_> {
 /// network work goes on in the background and reports through events.
 /// Free the string with `wh_free_string`.
 ///
-/// Commands: `devices.list`, `devices.refresh`, `discover.list`, `send`
-/// (deviceId, paths), `transfer.cancel` (transferId), `transfer.retry`
-/// (transferId), `pair.start` (deviceId), `pair.confirm` (pairId, accept),
+/// Commands: `devices.list`, `devices.refresh`, `discover.list`,
+/// `localsend.list`, `send` (deviceId, paths), `transfer.cancel`
+/// (transferId), `transfer.retry` (transferId), `pair.start` (deviceId),
+/// `pair.confirm` (pairId, accept), `receive.respond` (requestId, accept),
 /// `device.unpair` (deviceId), `device.setDefault` (deviceId),
 /// `settings.get`, `settings.set` (alias?, saveDir?). core-ffi/README.md
 /// describes their results.

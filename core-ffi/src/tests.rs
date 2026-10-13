@@ -106,11 +106,18 @@ fn pair_send_retry_rename_and_unpair() {
     let peer = loop {
         let nearby = a.ok(json!({ "command": "discover.list" }));
         if let Some(device) = nearby.as_array().unwrap().iter().find(|d| d["alias"] == "FfiB") {
+            assert_eq!(device["kind"], "wormhole");
             break device["fingerprint"].as_str().unwrap().to_string();
         }
         assert!(Instant::now() < deadline, "FfiB not discovered");
         std::thread::sleep(Duration::from_millis(300));
     };
+    // A LocalSend app may be on the network too; a Wormhole Send device is
+    // never listed with them.
+    let localsend = a.ok(json!({ "command": "localsend.list" }));
+    assert!(localsend.as_array().unwrap().iter().all(|d| d["kind"] == "localsend" && d["alias"] != "FfiB"));
+    assert_eq!(a.ok(json!({ "command": "receive.respond", "requestId": "none", "accept": true })), false);
+
     let started = Instant::now();
     let pair_id = a.ok(json!({ "command": "pair.start", "deviceId": peer }));
     assert!(started.elapsed() < Duration::from_millis(100), "pair.start took {:?}", started.elapsed());

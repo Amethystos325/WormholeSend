@@ -69,9 +69,10 @@ char *wh_start(const char *config_json,
  * network work goes on in the background and reports through events.
  * Free the string with `wh_free_string`.
  *
- * Commands: `devices.list`, `devices.refresh`, `discover.list`, `send`
- * (deviceId, paths), `transfer.cancel` (transferId), `transfer.retry`
- * (transferId), `pair.start` (deviceId), `pair.confirm` (pairId, accept),
+ * Commands: `devices.list`, `devices.refresh`, `discover.list`,
+ * `localsend.list`, `send` (deviceId, paths), `transfer.cancel`
+ * (transferId), `transfer.retry` (transferId), `pair.start` (deviceId),
+ * `pair.confirm` (pairId, accept), `receive.respond` (requestId, accept),
  * `device.unpair` (deviceId), `device.setDefault` (deviceId),
  * `settings.get`, `settings.set` (alias?, saveDir?). core-ffi/README.md
  * describes their results.

@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use wormhole_core::Node;
+use wormhole_core::{Kind, Node};
 use wormhole_core::config::Settings;
 use wormhole_core::identity::Identity;
 
@@ -36,9 +36,22 @@ pub(crate) fn run(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value
         "discover.list" => {
             node.refresh_in_background();
             // Only devices heard from within the online window: discovery
-            // keeps every device seen since the start, gone or not.
+            // keeps every device seen since the start, gone or not. LocalSend
+            // devices can't pair.
             Ok(serde_json::to_value(
-                node.devices().into_iter().filter(|d| !d.paired && d.online).collect::<Vec<_>>(),
+                node.devices()
+                    .into_iter()
+                    .filter(|d| !d.paired && d.online && d.kind == Kind::Wormhole)
+                    .collect::<Vec<_>>(),
+            )?)
+        }
+        "localsend.list" => {
+            node.refresh_in_background();
+            Ok(serde_json::to_value(
+                node.devices()
+                    .into_iter()
+                    .filter(|d| d.kind == Kind::LocalSend && d.online)
+                    .collect::<Vec<_>>(),
             )?)
         }
         "send" => {
@@ -57,6 +70,12 @@ pub(crate) fn run(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value
             let id = string(command, "transferId")?;
             let (device, paths) = shared.sends.lock().unwrap().get(id).cloned().context("找不到这次发送")?;
             Ok(json!(send(shared, node, &device, paths)?))
+        }
+        "receive.respond" => {
+            let id = string(command, "requestId")?;
+            let accept = command.get("accept").and_then(Value::as_bool).context("缺少 accept")?;
+            shared.active.lock().unwrap().remove(id);
+            Ok(json!(node.respond_receive(id, accept)))
         }
         "pair.start" => Ok(json!(node.pair(string(command, "deviceId")?)?)),
         "pair.confirm" => {
