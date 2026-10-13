@@ -100,6 +100,7 @@ static class Glyphs
     public const string FolderOpen = "";      // folder
     public const string Settings = "";        // gearshape
     public const string Power = "";           // power
+    public const string Volume = "";          // speaker.wave.2
     public const string Devices = "";
     public const string Send = "";
 }

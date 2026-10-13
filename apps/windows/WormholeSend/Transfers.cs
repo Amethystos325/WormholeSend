@@ -105,7 +105,7 @@ sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
         {
             var fraction = Math.Min(1, clock.Elapsed.TotalSeconds / seconds);
             var bytes = (long)(total * fraction);
-            emit(new TransferProgress(id, sending, device.Id, bytes, total));
+            emit(new TransferProgress(id, sending, device.Id, bytes, total, (int)(count * fraction)));
             if (failAt is { } at && fraction >= at)
             {
                 tick.Stop();

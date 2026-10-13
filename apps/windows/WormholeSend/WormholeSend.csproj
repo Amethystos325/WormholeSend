@@ -37,6 +37,8 @@
 
   <ItemGroup>
     <Resource Include="..\..\..\assets\app-icon.ico" Link="app-icon.ico" />
+    <!-- The sounds both apps play (Sounds.cs), next to the exe. -->
+    <None Include="..\..\..\assets\sounds\*.wav" Link="Sounds\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- The Rust core (core-ffi) is built with cargo and copied next to the

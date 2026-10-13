@@ -217,7 +217,8 @@ public class IslandModelTests
         Assert.Equal(new Size(360, 116), model.BodySizeFor(new Phase.Target()));
         Assert.Equal(new Size(420, 146), model.BodySizeFor(new Phase.Picker(null)));
         Assert.Equal(new Size(300, 48), model.BodySizeFor(new Phase.Unavailable("")));
-        Assert.Equal(new Size(340, 64), model.BodySizeFor(new Phase.Sending()));
+        Assert.Equal(new Size(340, 80), model.BodySizeFor(new Phase.Sending()));
+        Assert.Equal(new Size(340, 64), model.BodySizeFor(new Phase.Queued(1)));
         Assert.Equal(new Size(340, 52), model.BodySizeFor(new Phase.Done()));
         Assert.Equal(new Size(384, 84), model.BodySizeFor(new Phase.Receiving()));
         Assert.Equal(new Size(400, 100), model.BodySizeFor(new Phase.Received()));

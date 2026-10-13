@@ -20,7 +20,7 @@ abstract record CoreEvent
         {
             "device.updated" => new DeviceUpdated(S("id"), S("alias"), N("deviceType"), B("online"), B("paired")),
             "transfer.started" => new TransferStarted(S("id"), Sending(), S("deviceId"), S("alias"), (int)L("files"), L("total")),
-            "transfer.progress" => new TransferProgress(S("id"), Sending(), S("deviceId"), L("bytes"), L("total")),
+            "transfer.progress" => new TransferProgress(S("id"), Sending(), S("deviceId"), L("bytes"), L("total"), (int)L("filesDone")),
             "transfer.finished" => new TransferFinished(
                 S("id"), Sending(), S("deviceId"), S("alias"), S("status"), (int)L("filesDone"), L("bytes"),
                 e.TryGetProperty("savedPaths", out var paths) && paths.ValueKind == JsonValueKind.Array
@@ -42,7 +42,8 @@ abstract record CoreEvent
 
 sealed record DeviceUpdated(string Id, string Alias, string? DeviceType, bool Online, bool Paired) : CoreEvent;
 sealed record TransferStarted(string Id, bool Sending, string DeviceId, string Alias, int Files, long Total) : CoreEvent;
-sealed record TransferProgress(string Id, bool Sending, string DeviceId, long Bytes, long Total) : CoreEvent;
+/// FilesDone: the files completely transferred so far, of `Files` in TransferStarted.
+sealed record TransferProgress(string Id, bool Sending, string DeviceId, long Bytes, long Total, int FilesDone = 0) : CoreEvent;
 /// Status: done, failed, cancelled, rejected (403), busy (409), offline.
 sealed record TransferFinished(
     string Id, bool Sending, string DeviceId, string Alias, string Status, int FilesDone, long Bytes,

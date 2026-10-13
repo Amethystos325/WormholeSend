@@ -14,12 +14,15 @@ sealed class IslandModel : INotifyPropertyChanged
     public event Action<Phase>? PhaseChanged;
     /// The user answered a pairing request on the island: pair ID, accept.
     public event Action<string, bool>? PairAnswered;
+    /// A moment that sounds (Sounds.cs).
+    public event Action<Sound>? Sounded;
 
     Phase phase = new Phase.Idle();
     IReadOnlyList<Device> devices = Device.Samples;
     string dragLabel = "";
     Transfer? transfer;
     double progress;
+    TransferStats? sendStats;
     bool queueCollapsed;
     bool hovering;
     int waitingCount;
@@ -76,11 +79,24 @@ sealed class IslandModel : INotifyPropertyChanged
     public Transfer? Transfer { get => transfer; set => Set(ref transfer, value); }
     /// Progress of the transfer on screen, 0 to 1.
     public double Progress { get => progress; set => Set(ref progress, value); }
+    /// Sizes or files done of the send, and its speed: the line under its
+    /// progress bar.
+    public string SendDetail => sendStats?.Line ?? "";
+    /// For the progress events' times; a test sets its own.
+    public Func<TimeSpan> Clock { get; set; } = () => TimeSpan.FromMilliseconds(Environment.TickCount64);
     /// The queued state shrinks to a compact badge after a few seconds.
     public bool QueueCollapsed { get => queueCollapsed; set => Set(ref queueCollapsed, value); }
     /// Paired devices waiting to send to this one.
     public int WaitingCount { get => waitingCount; set => Set(ref waitingCount, value); }
     public string SaveDirLabel { get => saveDirLabel; set => Set(ref saveDirLabel, value); }
+
+    /// Starts the line under the send's progress bar afresh (null: empty
+    /// until the core says what it sends); `--demo sending` passes its own.
+    public void ShowSendStats(TransferStats? stats)
+    {
+        sendStats = stats;
+        Changed(nameof(SendDetail));
+    }
 
     public bool Hovering
     {
@@ -256,6 +272,7 @@ sealed class IslandModel : INotifyPropertyChanged
             return;
         }
         Progress = 0;
+        ShowSendStats(null);
         QueueCollapsed = false;
         Phase = new Phase.Sending();
     }
@@ -269,6 +286,7 @@ sealed class IslandModel : INotifyPropertyChanged
 
     void Fail(string reason)
     {
+        Sounded?.Invoke(Sound.Failed);
         Phase = new Phase.Failed(reason);
         Schedule(Spec.FailedHold, () =>
         {
@@ -298,6 +316,7 @@ sealed class IslandModel : INotifyPropertyChanged
             return;
         }
         Progress = 0;
+        ShowSendStats(null);
         QueueCollapsed = false;
         Phase = new Phase.Sending();
     }
@@ -319,10 +338,15 @@ sealed class IslandModel : INotifyPropertyChanged
             case TransferStarted { Sending: true } started when started.Id == sendId:
                 CancelTimers();
                 Progress = 0;
+                ShowSendStats(new TransferStats(started.Total, started.Files));
                 Phase = new Phase.Sending();
                 break;
             case TransferProgress { Sending: true } update when update.Id == sendId:
-                if (phase is Phase.Sending) Progress = Fraction(update.Bytes, update.Total);
+                if (phase is not Phase.Sending) break;
+                Progress = Fraction(update.Bytes, update.Total);
+                sendStats ??= new TransferStats();
+                sendStats.Update(update.Bytes, update.Total, update.FilesDone, Clock());
+                Changed(nameof(SendDetail));
                 break;
             case TransferFinished { Sending: true } finished when finished.Id == sendId:
                 SendFinished(finished);
@@ -338,6 +362,9 @@ sealed class IslandModel : INotifyPropertyChanged
                 if (phase is Phase.Receiving) Progress = receive.Progress;
                 break;
             case TransferFinished { Sending: false } finished when finished.Id == receive?.Id:
+                // A cancel was the sender's choice; only a broken connection sounds.
+                if (finished.Status != "cancelled")
+                    Sounded?.Invoke(finished.Status == "done" ? Sound.Received : Sound.Failed);
                 receive!.Status = finished.Status;
                 receive.Transfer = receive.Transfer with { Files = finished.SavedPaths, FileCount = finished.FilesDone };
                 if (phase is Phase.Receiving) ShowReceive();
@@ -358,6 +385,7 @@ sealed class IslandModel : INotifyPropertyChanged
         switch (finished.Status)
         {
             case "done":
+                Sounded?.Invoke(Sound.Sent);
                 Progress = 1;
                 Phase = new Phase.Done();
                 Schedule(Spec.DoneHold, () => Phase = new Phase.Idle());
@@ -467,6 +495,7 @@ sealed class IslandModel : INotifyPropertyChanged
 
     public void ShowPairRequest(string pairId, string alias, string code)
     {
+        Sounded?.Invoke(Sound.PairRequest);
         var request = new Phase.PairRequest(pairId, alias, code);
         if (CanShowReceive)
         {
@@ -560,7 +589,11 @@ sealed class IslandModel : INotifyPropertyChanged
                 break;
             case Phase.Queued when queueCollapsed:
                 return new Size(150, 30);
-            case Phase.Sending or Phase.Queued:
+            // The sending island has a line of sizes and speed under the bar.
+            case Phase.Sending:
+                content = new Size(340, 56);
+                break;
+            case Phase.Queued:
                 content = new Size(340, 40);
                 break;
             case Phase.Done or Phase.Failed or Phase.Refused or Phase.Notice or Phase.PairWaiting or Phase.Interrupted:

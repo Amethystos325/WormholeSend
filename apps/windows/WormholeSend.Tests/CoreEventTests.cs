@@ -214,8 +214,60 @@ public class CoreEventTests
     }
 
     [Fact]
+    public void TheSendShowsSizesThenTheSpeed()
+    {
+        var (model, _) = Sending();
+        var now = TimeSpan.Zero;
+        model.Clock = () => now;
+        Assert.Equal("", model.SendDetail);
+        model.Handle(new TransferStarted("send-1", true, Desk.Id, Desk.Name, 1, 2_100_000_000));
+        model.Handle(new TransferProgress("send-1", true, Desk.Id, 900_000_000, 2_100_000_000));
+        Assert.Equal("900 MB / 2.1 GB", model.SendDetail);
+        now = TimeSpan.FromSeconds(1);
+        model.Handle(new TransferProgress("send-1", true, Desk.Id, 945_000_000, 2_100_000_000));
+        Assert.Equal("945 MB / 2.1 GB · 45 MB/s", model.SendDetail);
+    }
+
+    [Fact]
+    public void SeveralFilesCountInsteadOfSizes()
+    {
+        var (model, _) = Sending();
+        var now = TimeSpan.Zero;
+        model.Clock = () => now;
+        model.Handle(new TransferStarted("send-1", true, Desk.Id, Desk.Name, 12, 600_000_000));
+        model.Handle(new TransferProgress("send-1", true, Desk.Id, 0, 600_000_000, FilesDone: 0));
+        now = TimeSpan.FromSeconds(1.5);
+        model.Handle(new TransferProgress("send-1", true, Desk.Id, 150_000_000, 600_000_000, FilesDone: 3));
+        Assert.Equal("3 / 12 个文件 · 100 MB/s", model.SendDetail);
+    }
+
+    [Fact]
+    public void TheMomentsThatSound()
+    {
+        var sounds = new List<Sound>();
+        var (model, _) = Sending();
+        model.Sounded += sounds.Add;
+        model.Handle(Finished("send-1", true, "done"));
+        model.Handle(new TransferStarted("in-1", false, "air", "MacBook Air", 1, 400));
+        model.Handle(Finished("in-1", false, "done"));
+        model.Handle(new TransferStarted("in-2", false, "air", "MacBook Air", 1, 400));
+        model.Handle(Finished("in-2", false, "failed"));
+        model.Handle(new TransferStarted("in-3", false, "air", "MacBook Air", 1, 400));
+        model.Handle(Finished("in-3", false, "cancelled"));
+        model.ShowPairRequest("p1", "MacBook Air", "482019");
+        Assert.Equal([Sound.Sent, Sound.Received, Sound.Failed, Sound.PairRequest], sounds);
+
+        sounds.Clear();
+        var (failing, _) = Sending();
+        failing.Sounded += sounds.Add;
+        failing.Handle(Finished("send-1", true, "offline"));
+        Assert.Equal([Sound.Failed], sounds);
+    }
+
+    [Fact]
     public void CoreEventsParse()
     {
+        Assert.Equal(new TransferProgress("t", true, "D", 5, 9, 2), CoreEvent.Parse("""{"event":"transfer.progress","id":"t","direction":"send","deviceId":"D","bytes":5,"total":9,"filesDone":2}"""));
         var finished = Assert.IsType<TransferFinished>(CoreEvent.Parse("""{"event":"transfer.finished","id":"t","direction":"receive","deviceId":"D","alias":"Mac","status":"done","filesDone":2,"bytes":9,"savedPaths":["C:\\a","C:\\b"],"error":null}"""));
         Assert.Equal(("t", false, "D", "done", 2, 9L), (finished.Id, finished.Sending, finished.DeviceId, finished.Status, finished.FilesDone, finished.Bytes));
         Assert.Equal(["C:\\a", "C:\\b"], finished.SavedPaths);

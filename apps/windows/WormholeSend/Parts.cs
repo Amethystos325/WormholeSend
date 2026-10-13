@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
@@ -80,6 +81,63 @@ static class Ui
         };
         if (target is IAnimatable animatable) animatable.BeginAnimation(property, animation);
     }
+}
+
+/// Text shortened in the middle when it doesn't fit, as SwiftUI's
+/// truncationMode(.middle): a long name gives way, "等 3 个文件" stays.
+sealed class MiddleText : Decorator
+{
+    readonly string full;
+    readonly TextBlock text;
+
+    public MiddleText(string text, double size, Brush brush)
+    {
+        full = text;
+        this.text = Ui.Text(text, size, brush);
+        this.text.TextTrimming = TextTrimming.None;
+        Child = this.text;
+        VerticalAlignment = VerticalAlignment.Center;
+    }
+
+    protected override Size MeasureOverride(Size constraint)
+    {
+        text.Text = Fit(constraint.Width);
+        text.Measure(constraint);
+        return text.DesiredSize;
+    }
+
+    string Fit(double width)
+    {
+        if (double.IsInfinity(width) || WidthOf(full) <= width) return full;
+        // Starts of the text elements, so no surrogate pair is split; keep as
+        // many as fit, half from each end.
+        var starts = StringInfo.ParseCombiningCharacters(full);
+        string Keep(int count)
+        {
+            var head = (count + 1) / 2;
+            var tail = count / 2;
+            return full[..starts[head]].TrimEnd() + "…" + (tail > 0 ? full[starts[starts.Length - tail]..].TrimStart() : "");
+        }
+        var (low, high, best) = (0, starts.Length - 1, "…");
+        while (low <= high)
+        {
+            var count = (low + high) / 2;
+            var candidate = Keep(count);
+            if (WidthOf(candidate) <= width)
+            {
+                best = candidate;
+                low = count + 1;
+            }
+            else
+                high = count - 1;
+        }
+        return best;
+    }
+
+    double WidthOf(string value) => new FormattedText(
+        value, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+        new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch), text.FontSize, text.Foreground,
+        VisualTreeHelper.GetDpi(this).PixelsPerDip).WidthIncludingTrailingWhitespace;
 }
 
 /// A device avatar: a circle with the device type, a green dot when online.

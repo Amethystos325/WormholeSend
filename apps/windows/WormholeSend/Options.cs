@@ -96,6 +96,11 @@ static class Demo
                     model.Transfer = sample;
                     model.Progress = 0.45;
                     model.Phase = new Phase.Sending();
+                    // Two progress reports a second apart, so the speed shows.
+                    var stats = new TransferStats(2_100_000_000, files: 1);
+                    stats.Update(900_000_000, 2_100_000_000, 0, TimeSpan.Zero);
+                    stats.Update(945_000_000, 2_100_000_000, 0, TimeSpan.FromSeconds(1));
+                    model.ShowSendStats(stats);
                     break;
                 case "queued":
                     model.Transfer = sample;

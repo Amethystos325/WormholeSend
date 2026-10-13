@@ -25,6 +25,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | `IslandWindow.cs`, `Screens.cs` | One transparent topmost window per screen, the sensor, DPI, full-screen hiding |
 | `DragMonitor.cs`, `DragWatch.cs` | Drags anywhere on screen, for the hint; the end of a drag that left the island |
 | `Core.cs`, `CoreEvents.cs`, `Transfers.cs` | P/Invoke to `wormhole.dll`, typed events, real and simulated transfers |
+| `Sounds.cs` | The sounds of delivered, received, failed and a pairing request, at 60 %: `assets/sounds` (made by `make-sounds.py`), the same files as on macOS; 提示音 in the tray menu |
 | `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
 | `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
 | `AppIcon.cs` | The app icon (`assets/app-icon.ico`, made on the Mac from `app-icon.svg`) in the title bars; also the exe's icon |
@@ -84,7 +85,10 @@ Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest
 - [ ] The other computer quits mid-send: "发送失败" with 重试
 - [ ] Receive files: progress, then the files can be dragged out, "在资源管理器中显示" works, and it stays open while hovered
 - [ ] The sender cancels: "传输中断"
-- [ ] Tray menu: default device (offline grey), 配对新设备, 打开接收文件夹, 设置, 退出
+- [ ] Sending shows "945 MB / 2.1 GB · 45 MB/s" under the bar, or "3 / 12 个文件 · …" for several files or a folder; the speed after a second
+- [ ] Long names shorten in the middle and keep "等 N 个文件": the target, the device list, "已送达"
+- [ ] Sounds: delivered, received, a failed send, a receive that breaks off (not when the sender cancels), a pairing request
+- [ ] Tray menu: default device (offline grey), 配对新设备, 打开接收文件夹, 提示音 (plays one when turned on), 设置, 退出
 - [ ] Second monitor: dragging into its sensor opens the island there; incoming transfers show on the primary screen
 - [ ] 150 % scaling, and monitors with different scaling: crisp, at the top center of each
 - [ ] A full-screen video or game: no sensor and no island on that screen

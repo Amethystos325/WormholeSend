@@ -113,13 +113,16 @@ sealed class SingleTargetContent : PhaseContent
 {
     public SingleTargetContent(Device device, string label)
     {
+        var avatar = Ui.Dock(new Avatar(device, 50, highlighted: true), Dock.Left);
+        avatar.Margin = new Thickness(0, 0, 14, 0);
         var titles = Ui.Column(4,
             Ui.Text($"松手发送到 {device.Name}", 15, Palette.Text, FontWeights.SemiBold),
-            Ui.Text($"{label} · 已配对，对方无需确认", 11.5, Palette.Secondary));
+            new MiddleText(label, 11.5, Palette.Secondary));
         titles.VerticalAlignment = VerticalAlignment.Center;
-        var row = Ui.Row(14, new Avatar(device, 50, highlighted: true), titles);
-        row.VerticalAlignment = VerticalAlignment.Top;
-        row.Margin = new Thickness(0, 4, 0, 0);
+        // A dock rather than a row, so the label knows its width.
+        var row = new DockPanel { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 0, 0) };
+        row.Children.Add(avatar);
+        row.Children.Add(titles);
         Children.Add(row);
     }
 }
@@ -130,7 +133,7 @@ sealed class PickerContent : PhaseContent
 
     public PickerContent(IReadOnlyList<Device> devices, string label)
     {
-        var title = Ui.Dock(Ui.Text($"把 {label} 发送到", 11, Palette.Secondary), Dock.Top);
+        var title = Ui.Dock(new MiddleText($"把 {label} 发送到", 11, Palette.Secondary), Dock.Top);
         title.Margin = new Thickness(4, 0, 0, 6);
         Children.Add(title);
 
@@ -211,7 +214,7 @@ sealed class StatusLine : PhaseContent
         Children.Add(icon);
         if (trailing is not null)
         {
-            var label = Ui.Dock(Ui.Text(trailing, 11, Palette.Secondary), Dock.Right);
+            var label = Ui.Dock(new MiddleText(trailing, 11, Palette.Secondary), Dock.Right);
             label.Margin = new Thickness(8, 0, 0, 0);
             label.MaxWidth = 140;
             Children.Add(label);
@@ -222,10 +225,13 @@ sealed class StatusLine : PhaseContent
     }
 }
 
+/// The send: its device, the bar, and under it the sizes or files done
+/// and the speed.
 sealed class ProgressContent : PhaseContent
 {
     readonly TextBlock percent = Ui.Percent();
     readonly ProgressLine bar = new(4, Palette.Accent);
+    readonly TextBlock detail = Ui.Text("", 11, Palette.Secondary);
 
     public ProgressContent(Device device, string title, Action onCancel)
     {
@@ -239,17 +245,19 @@ sealed class ProgressContent : PhaseContent
         var header = new DockPanel();
         header.Children.Add(Ui.Dock(percent, Dock.Right));
         header.Children.Add(Ui.Text(title, 12, Palette.Text, FontWeights.Medium));
-        var column = Ui.Column(6, header, bar);
+        Typography.SetNumeralAlignment(detail, FontNumeralAlignment.Tabular);
+        var column = Ui.Column(6, header, bar, detail);
         column.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(column);
         VerticalAlignment = VerticalAlignment.Top;
-        Height = 40;
+        Height = 56;
     }
 
     public override void Update(IslandModel model, Phase phase)
     {
         bar.Value = model.Progress;
         percent.Text = Ui.FormatPercent(model.Progress);
+        detail.Text = model.SendDetail;
     }
 }
 

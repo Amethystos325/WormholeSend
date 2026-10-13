@@ -60,6 +60,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
     {
         model.PhaseChanged += PhaseChanged;
         model.PairAnswered += AnswerPair;
+        model.Sounded += Sounds.Play;
         BuildWindows();
         SystemEvents.DisplaySettingsChanged += (_, _) =>
             Application.Current.Dispatcher.BeginInvoke(BuildWindows);
@@ -294,10 +295,18 @@ sealed class AppController(Options options) : IDragTarget, ISession
                 device.Name, device.Glyph, () => SetDefault(device), Checked: device.IsDefault, Dimmed: !device.Online)).ToList()),
         new("配对新设备…", Glyphs.Link, OpenPairing, Enabled: core is not null),
         new("打开接收文件夹", Glyphs.FolderOpen, OpenSaveDir, Enabled: settings is not null),
+        SoundsEntry(),
         new("设置…", Glyphs.Settings, OpenSettings),
         MenuEntry.Separator,
         new("退出", Glyphs.Power, Quit),
     ];
+
+    /// On by default; turning them on plays one.
+    static MenuEntry SoundsEntry() => new("提示音", Glyphs.Volume, () =>
+    {
+        Sounds.Enabled = !Sounds.Enabled;
+        if (Sounds.Enabled) Sounds.Play(Sound.Sent);
+    }, Checked: Sounds.Enabled);
 
     /// Switches for the simulated devices and transfers (`--fake`).
     IReadOnlyList<MenuEntry> BuildFakeMenu() =>
@@ -322,6 +331,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
             model.Fake.Receive(model.Devices.FirstOrDefault(d => d.Id == "air") ?? Device.Samples[1]);
         }),
         new("模拟配对请求", Glyphs.Link, () => model.ShowPairRequest("fake", "MacBook Air", "482019")),
+        SoundsEntry(),
         MenuEntry.Separator,
         new("退出", Glyphs.Power, Quit),
     ];
