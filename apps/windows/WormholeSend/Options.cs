@@ -130,11 +130,12 @@ static class Demo
                     model.Phase = name == "receiving" ? new Phase.Receiving() : new Phase.Received();
                     break;
                 case "pair-request": model.Phase = new Phase.PairRequest("demo", "MacBook Air", "482019"); break;
+                // As the core reports them, so the decline button counts down.
                 case "receive-request":
-                    model.Phase = new Phase.ReceiveRequest("demo", "Pixel 8", "IMG_0001.jpg 等 3 个文件", 8_400_000, null);
+                    model.Handle(new ReceiveRequest("demo", "pixel", "Pixel 8", "mobile", "IMG_0001.jpg 等 3 个文件", 3, 8_400_000, null));
                     break;
                 case "receive-text":
-                    model.Phase = new Phase.ReceiveRequest("demo", "Pixel 8", "一段文字", 0, SampleText);
+                    model.Handle(new ReceiveRequest("demo", "pixel", "Pixel 8", "mobile", "一段文字", 1, 0, SampleText));
                     break;
                 case "copied": model.Phase = new Phase.Notice("已复制到剪贴板", true, IslandModel.Preview(SampleText)); break;
                 case "awaiting": model.Phase = new Phase.AwaitingAcceptance("Pixel 8"); break;

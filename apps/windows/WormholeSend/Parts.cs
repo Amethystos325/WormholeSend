@@ -278,14 +278,26 @@ sealed class CancelButton : Pressable
 
 sealed class PillButton : Pressable
 {
+    readonly TextBlock label;
+
     public PillButton(string title, Action action, Brush? fill = null)
     {
-        Child = Ui.Text(title, 12, Palette.Text, FontWeights.SemiBold);
+        label = Ui.Text(title, 12, Palette.Text, FontWeights.SemiBold);
+        Typography.SetNumeralAlignment(label, FontNumeralAlignment.Tabular);
+        Child = label;
         Padding = new Thickness(12, 3, 12, 4);
-        CornerRadius = new CornerRadius(999);
         Background = fill ?? Palette.Tile;
         VerticalAlignment = VerticalAlignment.Center;
+        // Half the height: WPF shrinks a larger radius to the width and the
+        // height separately, which rounds the ends into an oval.
+        SizeChanged += (_, e) => CornerRadius = new CornerRadius(e.NewSize.Height / 2);
         Click += action;
+    }
+
+    public string Title
+    {
+        get => label.Text;
+        set => label.Text = value;
     }
 
     protected override void OnPressedChanged() => Opacity = Pressed ? 0.7 : 1;

@@ -51,6 +51,8 @@ sealed class IslandModel : INotifyPropertyChanged
     Phase.PairRequest? pendingPair;
     /// A LocalSend device's request that arrived while the island was busy.
     Phase.ReceiveRequest? pendingRequest;
+    /// When the requests not answered yet are declined, by `Clock`.
+    readonly Dictionary<string, TimeSpan> requestDeadlines = [];
 
     sealed class Incoming(string id, Transfer transfer)
     {
@@ -411,10 +413,12 @@ sealed class IslandModel : INotifyPropertyChanged
                     : [.. others];
                 break;
             case ReceiveRequest request:
+                requestDeadlines[request.RequestId] = Clock() + Spec.RequestTimeout;
                 ShowReceiveRequest(new Phase.ReceiveRequest(request.RequestId, request.Alias, request.Label, request.Total, request.Text));
                 break;
             // Unanswered for a minute, it just goes; the sender giving up is said.
             case ReceiveClosed closed:
+                requestDeadlines.Remove(closed.RequestId);
                 if (pendingRequest?.RequestId == closed.RequestId) pendingRequest = null;
                 if (phase is not Phase.ReceiveRequest shown || shown.RequestId != closed.RequestId) break;
                 if (closed.Reason == "cancelled")
@@ -602,6 +606,7 @@ sealed class IslandModel : INotifyPropertyChanged
     public void AnswerReceive(bool accept)
     {
         if (phase is not Phase.ReceiveRequest request) return;
+        requestDeadlines.Remove(request.RequestId);
         ReceiveAnswered?.Invoke(request.RequestId, accept);
         if (!accept || request.Text is not { } text)
         {
@@ -612,6 +617,13 @@ sealed class IslandModel : INotifyPropertyChanged
             ? new Phase.Notice("已复制到剪贴板", Success: true, Preview(text))
             : new Phase.Notice("无法写入剪贴板", Success: false));
     }
+
+    /// Whole seconds until the core declines the request, for its button;
+    /// null once it is answered or closed.
+    public int? SecondsLeft(string requestId) =>
+        requestDeadlines.TryGetValue(requestId, out var deadline)
+            ? Math.Max(0, (int)Math.Ceiling((deadline - Clock()).TotalSeconds))
+            : null;
 
     /// The start of a text, on one line.
     public static string Preview(string text)

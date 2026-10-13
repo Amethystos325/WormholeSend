@@ -5,6 +5,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace WormholeSend;
 
@@ -38,7 +39,7 @@ abstract class PhaseContent : DockPanel
         Phase.Receiving when model.Transfer is { } t => new ReceivingContent(t),
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
         Phase.PairRequest p => new PairRequestContent(p, model.AnswerPair),
-        Phase.ReceiveRequest r => new ReceiveRequestContent(r, model.AnswerReceive),
+        Phase.ReceiveRequest r => new ReceiveRequestContent(r, model),
         Phase.PairWaiting p => new StatusLine(Glyphs.Clock, Palette.Secondary, $"等待 {p.Alias} 确认…"),
         Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text, n.Detail),
         Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text, n.Detail),
@@ -429,15 +430,24 @@ sealed class PairRequestContent : PhaseContent
 }
 
 /// A LocalSend device asks to send: what and how much, or the start of a
-/// text message, with 拒绝 / 接收 (忽略 / 复制 for a text).
+/// text message, with 拒绝 / 接收 (忽略 / 复制 for a text). The decline button
+/// counts down the seconds until the core declines by itself.
 sealed class ReceiveRequestContent : PhaseContent
 {
-    public ReceiveRequestContent(Phase.ReceiveRequest request, Action<bool> answer)
+    public ReceiveRequestContent(Phase.ReceiveRequest request, IslandModel model)
     {
         var text = request.Text is not null;
+        var declineTitle = text ? "忽略" : "拒绝";
+        var decline = new PillButton(declineTitle, () => model.AnswerReceive(false));
+        void Count() => decline.Title = model.SecondsLeft(request.RequestId) is { } seconds ? $"{declineTitle} {seconds}s" : declineTitle;
+        Count();
+        var countdown = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        countdown.Tick += (_, _) => Count();
+        Loaded += (_, _) => countdown.Start();
+        Unloaded += (_, _) => countdown.Stop();
         var buttons = Ui.Row(8,
-            new PillButton(text ? "忽略" : "拒绝", () => answer(false)),
-            new PillButton(text ? "复制" : "接收", () => answer(true), Palette.Accent));
+            decline,
+            new PillButton(text ? "复制" : "接收", () => model.AnswerReceive(true), Palette.Accent));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.Margin = new Thickness(0, 10, 0, 0);
         Children.Add(Ui.Dock(buttons, Dock.Bottom));

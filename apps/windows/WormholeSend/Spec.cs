@@ -14,6 +14,9 @@ static class Spec
     public static readonly TimeSpan ReceivedHold = TimeSpan.FromSeconds(5);
     /// The queued state collapses to its compact form after this long.
     public static readonly TimeSpan QueuedHint = TimeSpan.FromSeconds(3);
+    /// The core declines a LocalSend device's request unanswered for this
+    /// long (ASK_TIMEOUT in core/src/receive.rs); its decline button counts down to it.
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(60);
 
     /// The drop area extends this far around the visible island.
     public const double HitOutset = 24;

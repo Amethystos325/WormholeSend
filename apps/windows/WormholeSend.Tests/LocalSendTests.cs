@@ -167,6 +167,25 @@ public class LocalSendTests
     }
 
     [Fact]
+    public void TheDeclineButtonCountsDownTheMinute()
+    {
+        var now = TimeSpan.FromSeconds(100);
+        var model = Model(Device.Samples);
+        model.Clock = () => now;
+        model.DragStarted(Files);
+        model.Handle(Request("r1"));
+        // Hidden behind the drag, the minute runs all the same.
+        now += TimeSpan.FromSeconds(12.5);
+        model.DragEnded();
+        Assert.IsType<Phase.ReceiveRequest>(model.Phase);
+        Assert.Equal(48, model.SecondsLeft("r1"));
+        now += TimeSpan.FromSeconds(60);
+        Assert.Equal(0, model.SecondsLeft("r1"));
+        model.Handle(new ReceiveClosed("r1", "timeout"));
+        Assert.Null(model.SecondsLeft("r1"));
+    }
+
+    [Fact]
     public void ASenderGivingUpIsSaid()
     {
         var model = Model([]);
