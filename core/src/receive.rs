@@ -302,6 +302,7 @@ impl Receiver {
                         device_id: session.fingerprint.clone(),
                         bytes: session.bytes(),
                         total: session.total,
+                        files_done: session.finished.len(),
                     });
                 }
             }

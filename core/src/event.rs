@@ -34,6 +34,8 @@ pub enum CoreEvent {
         device_id: String,
         bytes: u64,
         total: u64,
+        /// Files completely transferred so far (of `files` in `transfer.started`).
+        files_done: usize,
     },
 
     #[serde(rename = "transfer.finished")]

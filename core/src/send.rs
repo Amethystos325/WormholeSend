@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use walkdir::WalkDir;
@@ -269,6 +269,7 @@ async fn run(
     });
 
     let progress = Arc::new(AtomicU64::new(0));
+    let files_done = Arc::new(AtomicUsize::new(0));
     let accepted_total: u64 = response
         .files
         .keys()
@@ -277,7 +278,7 @@ async fn run(
         .sum();
     let ticker = tokio::spawn({
         let inner = inner.clone();
-        let progress = progress.clone();
+        let (progress, files_done) = (progress.clone(), files_done.clone());
         let (id, device_id) = (transfer_id.to_string(), fingerprint.clone());
         async move {
             let mut interval = tokio::time::interval(PROGRESS_INTERVAL);
@@ -289,6 +290,7 @@ async fn run(
                     device_id: device_id.clone(),
                     bytes: progress.load(Ordering::Relaxed),
                     total: accepted_total,
+                    files_done: files_done.load(Ordering::Relaxed),
                 });
             }
         }
@@ -334,6 +336,7 @@ async fn run(
                 outcome.files_done += 1;
                 outcome.bytes += file.size;
                 progress.store(outcome.bytes, Ordering::Relaxed);
+                files_done.store(outcome.files_done, Ordering::Relaxed);
             }
             // A failure caused by the receiver closing the session after the
             // cancel counts as the cancellation too.
@@ -362,6 +365,7 @@ async fn run(
         device_id: fingerprint.clone(),
         bytes: outcome.bytes,
         total: accepted_total,
+        files_done: outcome.files_done,
     });
     if outcome.status == TransferStatus::Done {
         let _ = TrustStore::update(&inner.home, |store| (store.record_sent(fingerprint), ()));
