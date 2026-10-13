@@ -11,6 +11,7 @@
 | `cli/` | 命令行 `whs`，用来在原生界面之前验证核心 |
 | `apps/macos/` | macOS 刘海面板验证原型（假数据） |
 | `apps/windows/` | Windows 应用（WPF）：顶部岛、托盘、设置、配对、首次引导，接入核心 |
+| `tools/` | `translations.py`：从代码里列出三种语言（中文、English、日本語）的界面文字对照表，Windows、macOS、核心各用到哪些 |
 
 ## 构建
 
