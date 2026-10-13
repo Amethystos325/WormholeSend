@@ -1,13 +1,13 @@
-//! The send side: locate the paired device, prepare-upload, then upload the
-//! files one by one.
+//! The send side: locate the device (paired, or a LocalSend device whose
+//! user accepts), prepare-upload, then upload the files one by one.
 //!
 //! The upload loop is adapted from the LocalSend CLI (`cli/src/send_task.rs`,
 //! Apache-2.0).
 
 use crate::control::client::{ControlClient, ControlError, control_addr};
 use crate::event::{CoreEvent, Direction, TransferStatus};
-use crate::node::{ActiveSend, Inner};
-use crate::trust::{TrustStore, TrustedDevice, normalize_fingerprint, short_fingerprint};
+use crate::node::{ActiveSend, Inner, Kind};
+use crate::trust::{TrustStore, normalize_fingerprint, short_fingerprint};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use localsend::discovery::HttpChannel;
@@ -84,6 +84,47 @@ impl Outcome {
     }
 }
 
+/// Where a send goes: a paired device, or a LocalSend device discovered in
+/// this run.
+struct Target {
+    fingerprint: String,
+    alias: String,
+    /// Where it was last seen.
+    host: Option<String>,
+    port: Option<u16>,
+    protocol: ProtocolType,
+    /// Paired devices accept without asking and keep a receive queue.
+    paired: bool,
+}
+
+impl Target {
+    fn find(inner: &Inner, fingerprint: &str) -> Option<Self> {
+        if let Some(device) = inner.trust().get(fingerprint) {
+            return Some(Self {
+                fingerprint: device.fingerprint.clone(),
+                alias: device.alias.clone(),
+                host: device.last_host.clone(),
+                port: device.last_port,
+                protocol: ProtocolType::Https,
+                paired: true,
+            });
+        }
+        let found = inner.discovery.device_by_fingerprint(fingerprint)?;
+        if Kind::of(found.device.device_model.as_deref()) != Kind::LocalSend {
+            return None;
+        }
+        let http = found.get_best_channel().and_then(|channel| channel.http());
+        Some(Self {
+            fingerprint: fingerprint.to_string(),
+            alias: found.device.alias.clone(),
+            host: http.map(|http| http.host.clone()),
+            port: http.map(|http| http.port),
+            protocol: http.map_or(ProtocolType::Https, |http| http.protocol),
+            paired: false,
+        })
+    }
+}
+
 pub(crate) fn spawn(inner: Arc<Inner>, transfer_id: String, fingerprint: String, paths: Vec<PathBuf>) {
     let cancel = SendCancel::new();
     inner.sends.lock().unwrap().insert(
@@ -95,12 +136,12 @@ pub(crate) fn spawn(inner: Arc<Inner>, transfer_id: String, fingerprint: String,
         },
     );
     tokio::spawn(async move {
-        let device = inner.trust().get(&fingerprint).cloned();
-        let alias = device
+        let target = Target::find(&inner, &fingerprint);
+        let alias = target
             .as_ref()
-            .map_or_else(|| short_fingerprint(&fingerprint).to_string(), |d| d.alias.clone());
-        let outcome = match device {
-            Some(device) => run(&inner, &transfer_id, &device, paths, &cancel).await,
+            .map_or_else(|| short_fingerprint(&fingerprint).to_string(), |t| t.alias.clone());
+        let outcome = match target {
+            Some(target) => run(&inner, &transfer_id, &target, paths, &cancel).await,
             None => Outcome::fail(TransferStatus::Rejected, "目标设备没有配对"),
         };
         inner.sends.lock().unwrap().remove(&transfer_id);
@@ -121,7 +162,7 @@ pub(crate) fn spawn(inner: Arc<Inner>, transfer_id: String, fingerprint: String,
 async fn run(
     inner: &Arc<Inner>,
     transfer_id: &str,
-    device: &TrustedDevice,
+    device: &Target,
     paths: Vec<PathBuf>,
     cancel: &SendCancel,
 ) -> Outcome {
@@ -142,8 +183,9 @@ async fn run(
         send.host = http.host.clone();
     }
 
-    // Wait for this device's turn in the receiver's queue.
-    let control = control_addr(&http.host, http.port);
+    // Wait for this device's turn in the receiver's queue. LocalSend has
+    // none: a busy receiver answers 409.
+    let control = control_addr(&http.host, http.port).filter(|_| device.paired);
     let ticket = match wait_turn(inner, transfer_id, device, control, cancel).await {
         Ok(ticket) => ticket,
         Err(outcome) => return outcome,
@@ -159,17 +201,28 @@ async fn run(
         }
     };
 
-    inner.emit(CoreEvent::TransferStarted {
-        id: transfer_id.to_string(),
-        direction: Direction::Send,
-        device_id: fingerprint.clone(),
-        alias: device.alias.clone(),
-        files: files.len(),
-        total,
-    });
+    let started = |files: usize, total: u64| {
+        inner.emit(CoreEvent::TransferStarted {
+            id: transfer_id.to_string(),
+            direction: Direction::Send,
+            device_id: fingerprint.clone(),
+            alias: device.alias.clone(),
+            files,
+            total,
+        });
+    };
+    // A LocalSend device's user accepts first, possibly only some files.
+    match device.paired {
+        true => started(files.len(), total),
+        false => inner.emit(CoreEvent::TransferWaiting {
+            id: transfer_id.to_string(),
+            device_id: fingerprint.clone(),
+            alias: device.alias.clone(),
+        }),
+    }
 
-    // Pinned to the paired fingerprint: a device impersonating it fails the
-    // TLS handshake.
+    // Pinned to the fingerprint: a device impersonating it fails the TLS
+    // handshake.
     let client = match LsHttpClientV2::try_new(
         &inner.identity.key_pem,
         &inner.identity.cert_pem,
@@ -179,7 +232,7 @@ async fn run(
         Ok(client) => Arc::new(client),
         Err(err) => return Outcome::fail(TransferStatus::Failed, format!("无法创建连接：{err}")),
     };
-    let protocol = ProtocolType::Https;
+    let protocol = device.protocol;
 
     let mut attempt = 0;
     let prepared = loop {
@@ -216,6 +269,9 @@ async fn run(
         Err(ClientError::StatusCode(err)) => {
             release();
             return match err.status {
+                403 if !device.paired => {
+                    Outcome::fail(TransferStatus::Declined, format!("{} 拒绝了接收", device.alias))
+                }
                 403 => {
                     mark_needs_repair(inner, fingerprint);
                     Outcome::fail(
@@ -226,6 +282,10 @@ async fn run(
                 409 => Outcome::fail(
                     TransferStatus::Busy,
                     format!("{} 正在接收其他文件", device.alias),
+                ),
+                401 => Outcome::fail(
+                    TransferStatus::Failed,
+                    format!("{} 开启了 PIN，暂不支持", device.alias),
                 ),
                 status => Outcome::fail(TransferStatus::Failed, format!("请求失败（HTTP {status}）")),
             };
@@ -276,6 +336,9 @@ async fn run(
         .filter_map(|id| files.get(id))
         .map(|file| file.size)
         .sum();
+    if !device.paired {
+        started(response.files.len(), accepted_total);
+    }
     let ticker = tokio::spawn({
         let inner = inner.clone();
         let (progress, files_done) = (progress.clone(), files_done.clone());
@@ -367,7 +430,7 @@ async fn run(
         total: accepted_total,
         files_done: outcome.files_done,
     });
-    if outcome.status == TransferStatus::Done {
+    if outcome.status == TransferStatus::Done && device.paired {
         let _ = TrustStore::update(&inner.home, |store| (store.record_sent(fingerprint), ()));
     }
     outcome
@@ -379,7 +442,7 @@ async fn run(
 async fn wait_turn(
     inner: &Arc<Inner>,
     transfer_id: &str,
-    device: &TrustedDevice,
+    device: &Target,
     control: Option<SocketAddr>,
     cancel: &SendCancel,
 ) -> Result<Option<String>, Outcome> {
@@ -436,7 +499,7 @@ fn mark_needs_repair(inner: &Inner, fingerprint: &str) {
 
 /// Finds a dialable address of the device: the one discovery saw recently,
 /// else its last known address, else whatever answers an announcement.
-async fn locate(inner: &Arc<Inner>, device: &TrustedDevice) -> Option<HttpChannel> {
+async fn locate(inner: &Arc<Inner>, device: &Target) -> Option<HttpChannel> {
     let fingerprint = &device.fingerprint;
     if inner.is_online(fingerprint)
         && let Some(channel) = known_channel(inner, fingerprint)
@@ -444,8 +507,8 @@ async fn locate(inner: &Arc<Inner>, device: &TrustedDevice) -> Option<HttpChanne
         return Some(channel);
     }
 
-    if let (Some(host), Some(port)) = (&device.last_host, device.last_port) {
-        let probe = inner.discovery.discover(host, port, ProtocolType::Https);
+    if let (Some(host), Some(port)) = (&device.host, device.port) {
+        let probe = inner.discovery.discover(host, port, device.protocol);
         if let Ok(Ok(Some(found))) = tokio::time::timeout(PROBE_TIMEOUT, probe).await
             && normalize_fingerprint(&found.device.fingerprint) == *fingerprint
             && let Some(http) = found.get_best_channel().and_then(|channel| channel.http())

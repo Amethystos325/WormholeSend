@@ -1,18 +1,20 @@
 //! The node's event loop: server and discovery events, and the receive side
 //! of transfers. A request is accepted without asking exactly when the
-//! sender's verified certificate fingerprint is in the trust store; every
-//! other request is declined (HTTP 403).
+//! sender's verified certificate fingerprint is in the trust store. A
+//! LocalSend device, which cannot pair, waits while this device's user is
+//! asked; any other request is declined (HTTP 403).
 
 use crate::event::{CoreEvent, Direction, TransferStatus};
-use crate::node::Inner;
+use crate::node::{Inner, Kind, type_name};
 use crate::save_path::receive_path;
 use crate::trust::normalize_fingerprint;
 use localsend::discovery::DiscoveryEvent;
 use localsend::http::server::ServerHandle;
 use localsend::http::server::common::save::FileUploadTarget;
 use localsend::http::server::v2::{PrepareUploadDecisionV2, ServerEventV2, SessionEndReasonV2};
+use localsend::model::discovery::DeviceType;
 use localsend::model::transfer::FileDto;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Component, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -20,6 +22,28 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+
+/// A `receive.request` nobody answered is declined after this long.
+const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The user's answer to a `receive.request`, or the timeout standing in.
+pub(crate) enum Answer {
+    User { request_id: String, accept: bool },
+    Timeout { request_id: String },
+}
+
+/// A request from a LocalSend device, waiting for the user's answer. The
+/// server holds its single session slot meanwhile.
+struct Asking {
+    request_id: String,
+    session_id: String,
+    fingerprint: String,
+    alias: String,
+    files: HashMap<String, FileDto>,
+    /// A text message: accepting it transfers nothing.
+    text: bool,
+    decision_tx: oneshot::Sender<PrepareUploadDecisionV2>,
+}
 
 /// What the per-file helper tasks report back to the loop.
 enum FileEvent {
@@ -68,6 +92,7 @@ pub(crate) async fn run(
     server: Arc<ServerHandle>,
     mut server_rx: mpsc::Receiver<ServerEventV2>,
     mut discovery_rx: mpsc::Receiver<DiscoveryEvent>,
+    mut answers_rx: mpsc::UnboundedReceiver<Answer>,
     mut stop_rx: oneshot::Receiver<()>,
 ) {
     let (files_tx, mut files_rx) = mpsc::unbounded_channel::<FileEvent>();
@@ -76,6 +101,7 @@ pub(crate) async fn run(
         server,
         files_tx,
         session: None,
+        asking: None,
     };
     loop {
         tokio::select! {
@@ -83,6 +109,7 @@ pub(crate) async fn run(
             Some(event) = server_rx.recv() => receiver.on_server_event(event),
             Some(event) = discovery_rx.recv() => receiver.on_discovery_event(event),
             Some(event) = files_rx.recv() => receiver.on_file_event(event),
+            Some(answer) = answers_rx.recv() => receiver.on_answer(answer),
             else => break,
         }
     }
@@ -94,6 +121,7 @@ struct Receiver {
     server: Arc<ServerHandle>,
     files_tx: mpsc::UnboundedSender<FileEvent>,
     session: Option<ReceiveSession>,
+    asking: Option<Asking>,
 }
 
 impl Receiver {
@@ -120,73 +148,42 @@ impl Receiver {
                 decision_tx,
             } => {
                 self.inner.confirm_device(ip.to_string(), info.clone());
+                let alias = single_line(&info.alias);
                 // Client certificates are mandatory, so a request without a
                 // verified fingerprint should not exist; decline it anyway.
-                let fingerprint = cert_fingerprint.as_deref().map(normalize_fingerprint);
-                let trusted = fingerprint
-                    .as_deref()
-                    .is_some_and(|fingerprint| self.inner.trust().contains(fingerprint));
-                let alias = single_line(&info.alias);
-                if !trusted {
+                let Some(fingerprint) = cert_fingerprint.as_deref().map(normalize_fingerprint) else {
                     let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
                     self.inner.emit(CoreEvent::ReceiveRejected {
-                        device_id: fingerprint.unwrap_or_default(),
+                        device_id: String::new(),
                         alias,
                         ip: ip.to_string(),
                     });
                     return;
-                }
-                let fingerprint = fingerprint.unwrap_or_default();
-                // One session at a time, in queue order (see `queue`).
-                if !self.inner.queue.admit(&fingerprint) {
-                    let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
-                    self.inner.emit(CoreEvent::Error {
-                        message: format!("{alias} 没有排队就发送，已拒绝"),
-                    });
-                    return;
-                }
-                if let Err(err) = std::fs::create_dir_all(&self.inner.settings.save_dir) {
-                    self.inner.queue.session_ended(&fingerprint);
-                    let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
-                    self.inner.emit(CoreEvent::Error {
-                        message: format!(
-                            "无法创建保存目录 {}：{err}",
-                            self.inner.settings.save_dir.display()
-                        ),
-                    });
-                    return;
-                }
-                let ids: HashSet<String> = files.keys().cloned().collect();
-                if decision_tx.send(PrepareUploadDecisionV2::Accept(ids)).is_err() {
-                    // The sender went away while this was being decided.
-                    self.inner.queue.session_ended(&fingerprint);
-                    return;
-                }
-                let session = ReceiveSession {
-                    transfer_id: uuid::Uuid::new_v4().to_string(),
-                    session_id,
-                    fingerprint,
-                    alias,
-                    total: files.values().map(|file| file.size).sum(),
-                    files,
-                    written: HashMap::new(),
-                    paths: HashMap::new(),
-                    in_flight: HashSet::new(),
-                    finished: HashSet::new(),
-                    failed: HashMap::new(),
-                    roots: HashMap::new(),
-                    ended: None,
-                    last_progress: Instant::now(),
                 };
-                self.inner.emit(CoreEvent::TransferStarted {
-                    id: session.transfer_id.clone(),
-                    direction: Direction::Receive,
-                    device_id: session.fingerprint.clone(),
-                    alias: session.alias.clone(),
-                    files: session.files.len(),
-                    total: session.total,
-                });
-                self.session = Some(session);
+                let trusted = self.inner.trust().contains(&fingerprint);
+                // A Wormhole Send device that is not paired thinks it still
+                // is: the 403 tells it to pair again.
+                let ask = !trusted && Kind::of(info.device_model.as_deref()) == Kind::LocalSend;
+                // One session at a time, in queue order (see `queue`).
+                if !(trusted || ask) || !self.inner.queue.admit(&fingerprint) {
+                    let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
+                    self.inner.emit(match trusted {
+                        true => CoreEvent::Error {
+                            message: format!("{alias} 没有排队就发送，已拒绝"),
+                        },
+                        false => CoreEvent::ReceiveRejected {
+                            device_id: fingerprint,
+                            alias,
+                            ip: ip.to_string(),
+                        },
+                    });
+                    return;
+                }
+                let text = message_text(&files).is_some();
+                match ask {
+                    true => self.ask(session_id, fingerprint, alias, info.device_type, files, decision_tx),
+                    false => self.accept(session_id, fingerprint, alias, files, text, decision_tx),
+                }
             }
             ServerEventV2::FileUpload {
                 session_id,
@@ -202,7 +199,16 @@ impl Receiver {
                     self.finish_if_done();
                 }
             }
-            ServerEventV2::PrepareUploadAborted { .. } => {}
+            // The sender gave up while this device's user was being asked.
+            ServerEventV2::PrepareUploadAborted { session_id } => {
+                if let Some(asking) = self.asking.take_if(|a| a.session_id == session_id) {
+                    self.close_asking(&asking);
+                    self.inner.emit(CoreEvent::ReceiveClosed {
+                        request_id: asking.request_id,
+                        reason: "cancelled".to_string(),
+                    });
+                }
+            }
             // The receiver cancels a transfer this device is sending.
             ServerEventV2::CancelReceived { ip, session_id } => {
                 let host = ip.to_string();
@@ -217,6 +223,157 @@ impl Receiver {
                 message: format!("传输服务已停止：{error}"),
             }),
         }
+    }
+
+    /// Accepts every file (or, for a text message, nothing: the text came
+    /// with the request) and starts the session.
+    fn accept(
+        &mut self,
+        session_id: String,
+        fingerprint: String,
+        alias: String,
+        files: HashMap<String, FileDto>,
+        text: bool,
+        decision_tx: oneshot::Sender<PrepareUploadDecisionV2>,
+    ) {
+        if text {
+            let _ = decision_tx.send(PrepareUploadDecisionV2::Accept(HashSet::new()));
+            self.inner.queue.session_ended(&fingerprint);
+            return;
+        }
+        if let Err(err) = std::fs::create_dir_all(&self.inner.settings.save_dir) {
+            self.inner.queue.session_ended(&fingerprint);
+            let _ = decision_tx.send(PrepareUploadDecisionV2::Decline);
+            self.inner.emit(CoreEvent::Error {
+                message: format!(
+                    "无法创建保存目录 {}：{err}",
+                    self.inner.settings.save_dir.display()
+                ),
+            });
+            return;
+        }
+        let ids: HashSet<String> = files.keys().cloned().collect();
+        if decision_tx.send(PrepareUploadDecisionV2::Accept(ids)).is_err() {
+            // The sender went away while this was being decided.
+            self.inner.queue.session_ended(&fingerprint);
+            return;
+        }
+        let session = ReceiveSession {
+            transfer_id: uuid::Uuid::new_v4().to_string(),
+            session_id,
+            fingerprint,
+            alias,
+            total: files.values().map(|file| file.size).sum(),
+            files,
+            written: HashMap::new(),
+            paths: HashMap::new(),
+            in_flight: HashSet::new(),
+            finished: HashSet::new(),
+            failed: HashMap::new(),
+            roots: HashMap::new(),
+            ended: None,
+            last_progress: Instant::now(),
+        };
+        self.inner.emit(CoreEvent::TransferStarted {
+            id: session.transfer_id.clone(),
+            direction: Direction::Receive,
+            device_id: session.fingerprint.clone(),
+            alias: session.alias.clone(),
+            files: session.files.len(),
+            total: session.total,
+        });
+        self.session = Some(session);
+    }
+
+    /// Asks this device's user about a LocalSend device's request; declined
+    /// when nobody answers in time.
+    fn ask(
+        &mut self,
+        session_id: String,
+        fingerprint: String,
+        alias: String,
+        device_type: Option<DeviceType>,
+        files: HashMap<String, FileDto>,
+        decision_tx: oneshot::Sender<PrepareUploadDecisionV2>,
+    ) {
+        if let Some(previous) = self.asking.take() {
+            // The server holds one request at a time, so this is stale.
+            self.close_asking(&previous);
+        }
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let text = message_text(&files);
+        self.inner.emit(CoreEvent::ReceiveRequest {
+            request_id: request_id.clone(),
+            device_id: fingerprint.clone(),
+            alias: alias.clone(),
+            device_type: device_type.as_ref().map(type_name),
+            label: match text {
+                Some(_) => "一段文字".to_string(),
+                None => label(&files),
+            },
+            files: files.len(),
+            total: files.values().map(|file| file.size).sum(),
+            text: text.clone(),
+        });
+        *self.inner.asking.lock().unwrap() = Some(request_id.clone());
+        tokio::spawn({
+            let (answers, request_id) = (self.inner.answers.clone(), request_id.clone());
+            async move {
+                tokio::time::sleep(ASK_TIMEOUT).await;
+                let _ = answers.send(Answer::Timeout { request_id });
+            }
+        });
+        self.asking = Some(Asking {
+            request_id,
+            session_id,
+            fingerprint,
+            alias,
+            files,
+            text: text.is_some(),
+            decision_tx,
+        });
+    }
+
+    fn on_answer(&mut self, answer: Answer) {
+        let (request_id, accept) = match &answer {
+            Answer::User { request_id, accept } => (request_id, *accept),
+            Answer::Timeout { request_id } => (request_id, false),
+        };
+        let Some(asking) = self.asking.take_if(|a| a.request_id == *request_id) else {
+            return;
+        };
+        *self.inner.asking.lock().unwrap() = None;
+        if let Answer::Timeout { .. } = answer {
+            self.inner.emit(CoreEvent::ReceiveClosed {
+                request_id: asking.request_id.clone(),
+                reason: "timeout".to_string(),
+            });
+        }
+        match accept {
+            true => self.accept(
+                asking.session_id,
+                asking.fingerprint,
+                asking.alias,
+                asking.files,
+                asking.text,
+                asking.decision_tx,
+            ),
+            false => {
+                let _ = asking.decision_tx.send(PrepareUploadDecisionV2::Decline);
+                self.inner.queue.session_ended(&asking.fingerprint);
+            }
+        }
+    }
+
+    /// Ends a request that is no longer asked about; its decision, if the
+    /// sender still waits, is a decline (by dropping it).
+    fn close_asking(&self, asking: &Asking) {
+        let mut open = self.inner.asking.lock().unwrap();
+        if open.as_deref() == Some(asking.request_id.as_str()) {
+            *open = None;
+        }
+        drop(open);
+        self.inner.queue.session_ended(&asking.fingerprint);
     }
 
     fn on_file_upload(
@@ -390,6 +547,10 @@ impl Receiver {
 
     /// The node stops while a transfer is running: discard the partial files.
     fn abort_session(&mut self) {
+        if let Some(asking) = self.asking.take() {
+            self.close_asking(&asking);
+            let _ = asking.decision_tx.send(PrepareUploadDecisionV2::Decline);
+        }
         if let Some(session) = self.session.take() {
             self.inner.queue.session_ended(&session.fingerprint);
             self.delete_unfinished(&session);
@@ -432,6 +593,51 @@ impl Receiver {
     }
 }
 
+/// The text of a LocalSend text message: a single text "file" whose content
+/// is the preview.
+fn message_text(files: &HashMap<String, FileDto>) -> Option<String> {
+    let mut iter = files.values();
+    let (Some(file), None) = (iter.next(), iter.next()) else {
+        return None;
+    };
+    let text = file.file_type.starts_with("text/") || file.file_type == "text";
+    file.preview.clone().filter(|_| text)
+}
+
+/// What a request offers, as the shells label a drag: "IMG_0001.jpg",
+/// "文件夹 照片", "IMG_0001.jpg 等 3 个文件", "a 等 2 个文件夹" or
+/// "a 等 3 个文件或文件夹", by the top-level entries.
+fn label(files: &HashMap<String, FileDto>) -> String {
+    // Top-level name → whether it is a folder.
+    let mut entries: BTreeMap<String, bool> = BTreeMap::new();
+    for file in files.values() {
+        match file.file_name.trim_start_matches('/').split_once('/') {
+            Some((top, _)) => {
+                entries.insert(single_line(top), true);
+            }
+            None => {
+                entries.entry(single_line(&file.file_name)).or_insert(false);
+            }
+        }
+    }
+    let Some((name, &folder)) = entries.iter().next() else {
+        return "文件".to_string();
+    };
+    let folders = entries.values().filter(|folder| **folder).count();
+    match entries.len() {
+        1 if folder => format!("文件夹 {name}"),
+        1 => name.clone(),
+        count => {
+            let kind = match folders {
+                0 => "文件",
+                n if n == count => "文件夹",
+                _ => "文件或文件夹",
+            };
+            format!("{name} 等 {count} 个{kind}")
+        }
+    }
+}
+
 /// A peer-supplied name, safe to print on one line.
 fn single_line(text: &str) -> String {
     text.chars()
@@ -439,4 +645,51 @@ fn single_line(text: &str) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn offer(names: &[(&str, &str, Option<&str>)]) -> HashMap<String, FileDto> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(i, (name, file_type, preview))| {
+                let file = FileDto {
+                    id: i.to_string(),
+                    file_name: name.to_string(),
+                    size: 1,
+                    file_type: file_type.to_string(),
+                    sha256: None,
+                    preview: preview.map(str::to_string),
+                    metadata: None,
+                };
+                (i.to_string(), file)
+            })
+            .collect()
+    }
+
+    fn files(names: &[&str]) -> HashMap<String, FileDto> {
+        offer(&names.iter().map(|name| (*name, "image/jpeg", None)).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn labels_by_top_level_entries() {
+        assert_eq!(label(&files(&["IMG_2.jpg"])), "IMG_2.jpg");
+        assert_eq!(label(&files(&["IMG_2.jpg", "IMG_1.jpg", "IMG_3.jpg"])), "IMG_1.jpg 等 3 个文件");
+        assert_eq!(label(&files(&["照片/a.jpg", "照片/b/c.jpg"])), "文件夹 照片");
+        assert_eq!(label(&files(&["b/x", "a/y"])), "a 等 2 个文件夹");
+        assert_eq!(label(&files(&["b/x", "a.txt"])), "a.txt 等 2 个文件或文件夹");
+    }
+
+    #[test]
+    fn text_messages_are_a_single_text_file_with_a_preview() {
+        assert_eq!(message_text(&offer(&[("m.txt", "text/plain", Some("你好"))])).as_deref(), Some("你好"));
+        assert_eq!(message_text(&offer(&[("m.txt", "text", Some("hi"))])).as_deref(), Some("hi"));
+        assert_eq!(message_text(&offer(&[("m.txt", "text/plain", None)])), None);
+        assert_eq!(message_text(&offer(&[("a.jpg", "image/jpeg", Some("x"))])), None);
+        let two = offer(&[("a.txt", "text/plain", Some("a")), ("b.txt", "text/plain", Some("b"))]);
+        assert_eq!(message_text(&two), None);
+    }
 }

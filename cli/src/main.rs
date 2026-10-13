@@ -12,10 +12,10 @@ use wormhole_core::config::{self, Settings};
 use wormhole_core::event::{CoreEvent, Direction, TransferStatus};
 use wormhole_core::identity::Identity;
 use wormhole_core::trust::{self, TrustStore, TrustedDevice};
-use wormhole_core::{DeviceInfo, Node, NodeOptions};
+use wormhole_core::{DeviceInfo, Kind, Node, NodeOptions};
 
 #[derive(Parser)]
-#[command(name = "whs", version, about = "Wormhole Send 命令行：在局域网内直接给已配对设备发文件")]
+#[command(name = "whs", version, about = "Wormhole Send 命令行：在局域网内直接给已配对设备发文件，也能和 LocalSend 互传")]
 struct Cli {
     /// 数据目录（身份、设置、信任库），默认在系统应用数据目录下的 WormholeSend
     #[arg(long, global = true, env = "WHS_HOME")]
@@ -72,14 +72,14 @@ enum Command {
         wait: u64,
     },
 
-    /// 持续运行，自动接收已配对设备发来的文件（Ctrl+C 退出）
+    /// 持续运行，自动接收已配对设备发来的文件，LocalSend 设备发来时询问（Ctrl+C 退出）
     Receive {
         /// 本次运行的保存位置（不保存到设置）
         #[arg(long)]
         save_dir: Option<PathBuf>,
     },
 
-    /// 把文件或文件夹发给已配对设备
+    /// 把文件或文件夹发给已配对设备，或附近的 LocalSend 设备（对方确认后接收）
     Send {
         /// 目标设备名称或指纹前缀；不填则发给默认设备
         #[arg(short, long)]
@@ -353,8 +353,9 @@ async fn devices(out: &Printer, home: PathBuf, settings: Settings, wait: u64) ->
             _ => String::new(),
         };
         println!(
-            "{mark} {}  {}  {}  {address}{}",
+            "{mark} {}{}  {}  {}  {address}{}",
             device.alias,
+            if device.kind == Kind::LocalSend { "（LocalSend）" } else { "" },
             if device.online { "在线" } else { "离线" },
             trust::short_fingerprint(&device.fingerprint),
             if device.needs_repair { "  （需要重新配对）" } else { "" }
@@ -392,10 +393,10 @@ async fn receive(mut out: Printer, home: PathBuf, settings: Settings) -> anyhow:
             identity.port,
             save_dir.display()
         );
-        println!("只接收已配对设备的文件。按 Ctrl+C 退出。");
+        println!("已配对设备发来的文件自动接收，LocalSend 设备发来时询问。按 Ctrl+C 退出。");
     }
-    // A pairing whose code waits for y/n on stdin.
-    let mut awaiting: Option<String> = None;
+    // A pairing code or a LocalSend request waiting for y/n on stdin.
+    let mut awaiting: Option<Awaiting> = None;
     let mut lines = stdin_lines();
     let mut stdin_open = true;
     loop {
@@ -405,23 +406,42 @@ async fn receive(mut out: Printer, home: PathBuf, settings: Settings) -> anyhow:
                 out.event(&event, true);
                 match &event {
                     CoreEvent::PairCode { pair_id, .. } => {
-                        awaiting = Some(pair_id.clone());
+                        awaiting = Some(Awaiting::Pair(pair_id.clone()));
                         if !out.json {
                             println!("输入 y 确认配对，n 拒绝：");
                         }
                     }
-                    CoreEvent::PairResult { pair_id, .. } if awaiting.as_ref() == Some(pair_id) => awaiting = None,
+                    CoreEvent::ReceiveRequest { request_id, text, .. } => {
+                        awaiting = Some(Awaiting::Receive(request_id.clone(), text.clone()));
+                        if !out.json {
+                            println!("输入 y 接收，n 拒绝（1 分钟内不回答视为拒绝）：");
+                        }
+                    }
+                    CoreEvent::PairResult { pair_id: id, .. } | CoreEvent::ReceiveClosed { request_id: id, .. }
+                        if awaiting.as_ref().is_some_and(|a| a.id() == id) =>
+                    {
+                        awaiting = None
+                    }
                     _ => {}
                 }
             }
             line = lines.recv(), if stdin_open => match line {
-                Some(line) => {
-                    if let Some(pair_id) = awaiting.take()
-                        && let Err(err) = node.pair_confirm(&pair_id, is_yes(&line))
-                    {
-                        out.say(&format!("{err:#}"));
+                Some(line) => match awaiting.take() {
+                    Some(Awaiting::Pair(pair_id)) => {
+                        if let Err(err) = node.pair_confirm(&pair_id, is_yes(&line)) {
+                            out.say(&format!("{err:#}"));
+                        }
                     }
-                }
+                    Some(Awaiting::Receive(request_id, text)) => {
+                        let accept = is_yes(&line);
+                        if !node.respond_receive(&request_id, accept) {
+                            out.say("这个请求已经结束");
+                        } else if accept && let Some(text) = text {
+                            out.say(&format!("收到的文字：\n{text}"));
+                        }
+                    }
+                    None => {}
+                },
                 None => stdin_open = false,
             },
             _ = interrupt.recv() => break,
@@ -445,13 +465,15 @@ async fn send(
         }
     }
     let store = TrustStore::load(&home)?;
-    let target = match &to {
-        Some(query) => store.resolve(query).map_err(anyhow::Error::msg)?,
-        None => store
-            .default_device()
-            .context("还没有配对设备。先用 whs trust add 添加")?,
+    let paired = match &to {
+        Some(query) => store.resolve(query).ok(),
+        None => Some(
+            store
+                .default_device()
+                .context("还没有配对设备。先用 whs pair 配对，或用 --to 指定附近的 LocalSend 设备")?,
+        ),
     };
-    let fingerprint = target.fingerprint.clone();
+    let paired = paired.map(|device| device.fingerprint.clone());
 
     let (node, mut events) = Node::start(NodeOptions {
         home,
@@ -459,6 +481,31 @@ async fn send(
         port_fallback: true,
     })
     .await?;
+    let fingerprint = match (paired, &to) {
+        (Some(fingerprint), _) => fingerprint,
+        // Not paired: a LocalSend device nearby.
+        (None, Some(query)) => {
+            if !out.json {
+                eprintln!("正在搜索附近的 LocalSend 设备…");
+            }
+            let deadline = Instant::now() + Duration::from_secs(3);
+            node.refresh().await;
+            tokio::time::sleep(deadline.saturating_duration_since(Instant::now())).await;
+            let found: Vec<DeviceInfo> = node
+                .devices()
+                .into_iter()
+                .filter(|device| device.kind == Kind::LocalSend && device.online)
+                .collect();
+            match trust::resolve_device(&found, query, |d| (&d.alias, &d.fingerprint)) {
+                Ok(device) => device.fingerprint.clone(),
+                Err(err) => {
+                    node.stop().await;
+                    bail!("{err}（不是已配对设备，附近也没有这台 LocalSend 设备）");
+                }
+            }
+        }
+        (None, None) => unreachable!(),
+    };
     let transfer_id = node.send(&fingerprint, paths);
     let mut cancelled = false;
     let code = loop {
@@ -480,6 +527,21 @@ async fn send(
     };
     node.stop().await;
     Ok(code)
+}
+
+/// What a line typed on stdin answers.
+enum Awaiting {
+    Pair(String),
+    /// A LocalSend request, with the text of a text message.
+    Receive(String, Option<String>),
+}
+
+impl Awaiting {
+    fn id(&self) -> &String {
+        match self {
+            Awaiting::Pair(id) | Awaiting::Receive(id, _) => id,
+        }
+    }
 }
 
 /// Ctrl+C, listened to from creation on. `tokio::signal::ctrl_c()` only
@@ -690,6 +752,7 @@ impl Printer {
             CoreEvent::DeviceUpdated {
                 id,
                 alias,
+                kind,
                 online,
                 paired,
                 ..
@@ -698,10 +761,12 @@ impl Printer {
                     return;
                 }
                 let fp = trust::short_fingerprint(id);
-                let text = match (paired, online) {
-                    (true, true) => format!("已配对设备在线：{alias}（{fp}）"),
-                    (true, false) => format!("已配对设备离线：{alias}（{fp}）"),
-                    (false, _) => format!("发现未配对设备：{alias}（{fp}）"),
+                let text = match (paired, kind, online) {
+                    (true, _, true) => format!("已配对设备在线：{alias}（{fp}）"),
+                    (true, _, false) => format!("已配对设备离线：{alias}（{fp}）"),
+                    (false, Kind::LocalSend, true) => format!("LocalSend 设备在线：{alias}（{fp}）"),
+                    (false, Kind::LocalSend, false) => format!("LocalSend 设备离线：{alias}（{fp}）"),
+                    (false, Kind::Wormhole, _) => format!("发现未配对设备：{alias}（{fp}）"),
                 };
                 self.line(&text);
             }
@@ -780,6 +845,7 @@ impl Printer {
                         let label = match status {
                             TransferStatus::Cancelled => "已取消",
                             TransferStatus::Rejected => "被拒绝",
+                            TransferStatus::Declined => "对方拒绝",
                             TransferStatus::Busy => "对方忙",
                             TransferStatus::Offline => "设备离线",
                             _ => "失败",
@@ -799,6 +865,29 @@ impl Printer {
             } => {
                 let fp = trust::short_fingerprint(device_id);
                 self.line(&format!("✗ 已拒绝未配对设备 {alias}（{fp}，{ip}）的发送请求"));
+            }
+            CoreEvent::TransferWaiting { alias, .. } => {
+                self.line(&format!("⏳ 等待 {alias} 接收…"));
+            }
+            CoreEvent::ReceiveRequest {
+                device_id,
+                alias,
+                label,
+                total,
+                text,
+                ..
+            } => {
+                let fp = trust::short_fingerprint(device_id);
+                self.line(&match text {
+                    Some(text) => format!("{alias}（LocalSend，{fp}）发来一段文字：\n{text}"),
+                    None => format!("{alias}（LocalSend，{fp}）想发送 {label}（{}）", format_bytes(*total)),
+                });
+            }
+            CoreEvent::ReceiveClosed { reason, .. } => {
+                self.line(match reason.as_str() {
+                    "timeout" => "✗ 1 分钟内没有回答，已拒绝",
+                    _ => "✗ 对方取消了发送",
+                });
             }
             CoreEvent::TransferQueued { position, .. } => {
                 self.line(&format!("⏳ 对方正在接收其他设备的文件，排队中 · 前面还有 {position} 个"));

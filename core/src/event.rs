@@ -1,20 +1,33 @@
 //! Events the core reports to the shell (the CLI now, the native apps later).
 //! Serialized as JSON with an `event` tag, as the FFI will hand them over.
 
+use crate::node::Kind;
 use serde::Serialize;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "event", rename_all_fields = "camelCase")]
 pub enum CoreEvent {
-    /// A device was seen, or a paired device went online or offline.
+    /// A device was seen, or a paired or LocalSend device went online or
+    /// offline.
     #[serde(rename = "device.updated")]
     DeviceUpdated {
         id: String,
         alias: String,
         device_type: Option<String>,
+        kind: Kind,
         online: bool,
         paired: bool,
+    },
+
+    /// Sending to a device that is not paired (LocalSend): waiting for its
+    /// user to accept. `transfer.started` follows once they did, or
+    /// `transfer.finished` with status `declined`.
+    #[serde(rename = "transfer.waiting")]
+    TransferWaiting {
+        id: String,
+        device_id: String,
+        alias: String,
     },
 
     #[serde(rename = "transfer.started")]
@@ -52,7 +65,31 @@ pub enum CoreEvent {
         error: Option<String>,
     },
 
-    /// A device that is not paired asked to send files; it was declined.
+    /// A device that is not paired (LocalSend) asks to send: accept or
+    /// decline with `respond_receive` within a minute. A text message
+    /// carries its `text`; accepting it transfers nothing (the shell shows
+    /// or copies the text), accepting files starts a `transfer.started`.
+    #[serde(rename = "receive.request")]
+    ReceiveRequest {
+        request_id: String,
+        device_id: String,
+        alias: String,
+        device_type: Option<String>,
+        /// What is offered, e.g. "IMG_0001.jpg 等 3 个文件".
+        label: String,
+        files: usize,
+        total: u64,
+        text: Option<String>,
+    },
+
+    /// A `receive.request` closed without an answer: `timeout` (declined
+    /// after a minute) or `cancelled` (the sender gave up).
+    #[serde(rename = "receive.closed")]
+    ReceiveClosed { request_id: String, reason: String },
+
+    /// A device that is not paired was declined without asking: a Wormhole
+    /// Send device (it has to pair again), or a LocalSend device while
+    /// another transfer was running or waiting.
     #[serde(rename = "receive.rejected")]
     ReceiveRejected {
         device_id: String,
@@ -123,6 +160,9 @@ pub enum TransferStatus {
     Cancelled,
     /// The receiver does not trust this device (HTTP 403).
     Rejected,
+    /// The receiver's user declined (HTTP 403 from a device that is not
+    /// paired, which asks every time).
+    Declined,
     /// The receiver is busy with another transfer (HTTP 409).
     Busy,
     /// The device could not be reached.

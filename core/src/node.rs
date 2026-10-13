@@ -4,7 +4,7 @@
 
 use crate::config::{MULTICAST_PORT, Settings};
 use crate::event::CoreEvent;
-use crate::identity::Identity;
+use crate::identity::{DEVICE_MODEL, Identity};
 use crate::send::SendCancel;
 use crate::trust::{TrustStore, normalize_fingerprint};
 use crate::pairing::{self, Pairings};
@@ -36,6 +36,30 @@ pub(crate) const ONLINE_WINDOW: Duration = Duration::from_secs(60);
 /// How often paired devices are probed at their last known address.
 const PROBE_INTERVAL: Duration = Duration::from_secs(20);
 
+/// LocalSend devices are probed while they were seen this recently: they
+/// announce themselves only when their app starts or refreshes.
+const LOCALSEND_PROBE_WINDOW: Duration = Duration::from_secs(10 * 60);
+
+/// Which app a device runs, told by the model it announces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    /// Wormhole Send: pairs, then sends and receives without asking.
+    Wormhole,
+    /// LocalSend: cannot pair; its user, or this one, accepts every transfer.
+    #[serde(rename = "localsend")]
+    LocalSend,
+}
+
+impl Kind {
+    pub(crate) fn of(device_model: Option<&str>) -> Self {
+        match device_model {
+            Some(DEVICE_MODEL) => Kind::Wormhole,
+            _ => Kind::LocalSend,
+        }
+    }
+}
+
 pub struct NodeOptions {
     /// Directory of the identity, the settings and the trust store.
     pub home: PathBuf,
@@ -53,6 +77,8 @@ pub struct DeviceInfo {
     pub fingerprint: String,
     pub alias: String,
     pub device_type: Option<String>,
+    /// Paired devices are always Wormhole Send devices.
+    pub kind: Kind,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub online: bool,
@@ -84,6 +110,10 @@ pub(crate) struct Inner {
     presence: Mutex<HashMap<String, Presence>>,
     pub(crate) pairings: Pairings,
     pub(crate) queue: ReceiveQueue,
+    /// The user's answers to `receive.request`, for the event loop.
+    pub(crate) answers: mpsc::UnboundedSender<receive::Answer>,
+    /// The `receive.request` waiting for an answer, if any.
+    pub(crate) asking: Mutex<Option<String>>,
 }
 
 pub(crate) struct ActiveSend {
@@ -117,6 +147,7 @@ impl Node {
         identity.port = server.port();
 
         let (events_tx, events_rx) = mpsc::unbounded_channel();
+        let (answers_tx, answers_rx) = mpsc::unbounded_channel();
         let (discovery_tx, discovery_rx) = mpsc::channel::<DiscoveryEvent>(64);
         let (discovery_stop_tx, discovery_stop_rx) = oneshot::channel();
         let discovery = Arc::new(
@@ -151,6 +182,8 @@ impl Node {
             sends: Mutex::new(HashMap::new()),
             presence: Mutex::new(HashMap::new()),
             pairings: Pairings::default(),
+            answers: answers_tx,
+            asking: Mutex::new(None),
         });
         let server = Arc::new(server);
 
@@ -160,6 +193,7 @@ impl Node {
             server.clone(),
             server_rx,
             discovery_rx,
+            answers_rx,
             loop_stop_rx,
         ))];
         tasks.push(tokio::spawn({
@@ -168,7 +202,7 @@ impl Node {
                 let mut interval = tokio::time::interval(PROBE_INTERVAL);
                 loop {
                     interval.tick().await;
-                    inner.probe_paired().await;
+                    inner.probe_known().await;
                     inner.check_presence();
                 }
             }
@@ -210,10 +244,11 @@ impl Node {
         &self.inner.settings
     }
 
-    /// Announces this device and probes the paired devices at their last
-    /// known addresses; returns once the probes answered or timed out.
+    /// Announces this device and probes the paired (and recently seen
+    /// LocalSend) devices at their last known addresses; returns once the
+    /// probes answered or timed out.
     pub async fn refresh(&self) {
-        tokio::join!(self.inner.discovery.announce(), self.inner.probe_paired());
+        tokio::join!(self.inner.discovery.announce(), self.inner.probe_known());
     }
 
     /// Paired devices first (the default one on top), then the other devices
@@ -235,6 +270,10 @@ impl Node {
                 let trusted = trust.get(&fingerprint);
                 Some(DeviceInfo {
                     online: inner.is_online(&fingerprint),
+                    kind: match trusted {
+                        Some(_) => Kind::Wormhole,
+                        None => Kind::of(device.device_model.as_deref()),
+                    },
                     paired: trusted.is_some(),
                     is_default: trusted.is_some_and(|t| t.is_default),
                     needs_repair: trusted.is_some_and(|t| t.needs_repair),
@@ -254,6 +293,7 @@ impl Node {
                     device_type: trusted.device_type.as_ref().map(type_name),
                     host: trusted.last_host.clone(),
                     port: trusted.last_port,
+                    kind: Kind::Wormhole,
                     online: false,
                     paired: true,
                     is_default: trusted.is_default,
@@ -268,8 +308,9 @@ impl Node {
         list
     }
 
-    /// Starts sending `paths` (files and folders) to a paired device and
-    /// returns the transfer ID. Progress and the result arrive as events.
+    /// Starts sending `paths` (files and folders) to a paired device, or to
+    /// a LocalSend device that is online (its user accepts), and returns the
+    /// transfer ID. Progress and the result arrive as events.
     pub fn send(&self, fingerprint: &str, paths: Vec<PathBuf>) -> String {
         let transfer_id = uuid::Uuid::new_v4().to_string();
         send::spawn(
@@ -286,7 +327,7 @@ impl Node {
     pub fn refresh_in_background(&self) {
         let inner = self.inner.clone();
         tokio::spawn(async move {
-            tokio::join!(inner.discovery.announce(), inner.probe_paired());
+            tokio::join!(inner.discovery.announce(), inner.probe_known());
         });
     }
 
@@ -300,6 +341,16 @@ impl Node {
     /// This side's user compared the codes and accepts or declines.
     pub fn pair_confirm(&self, pair_id: &str, accept: bool) -> anyhow::Result<()> {
         pairing::confirm(&self.inner, pair_id, accept)
+    }
+
+    /// The user accepts or declines a `receive.request`. Returns whether it
+    /// was still waiting for the answer.
+    pub fn respond_receive(&self, request_id: &str, accept: bool) -> bool {
+        if self.inner.asking.lock().unwrap().as_deref() != Some(request_id) {
+            return false;
+        }
+        let answer = receive::Answer::User { request_id: request_id.to_string(), accept };
+        self.inner.answers.send(answer).is_ok()
     }
 
     /// Unpairs a device and tells it. `None`: it was not paired;
@@ -439,6 +490,10 @@ impl Inner {
             .unwrap_or(false),
             None => self.trust().contains(&fingerprint),
         };
+        let kind = match paired {
+            true => Kind::Wormhole,
+            false => Kind::of(device.device_model.as_deref()),
+        };
         let newly_online = {
             let mut presence = self.presence.lock().unwrap();
             let entry = presence.entry(fingerprint.clone()).or_insert(Presence {
@@ -448,18 +503,21 @@ impl Inner {
             entry.last_seen = Instant::now();
             !std::mem::replace(&mut entry.reported_online, true)
         };
-        if first || (paired && newly_online) {
+        // LocalSend devices can be sent to, so they come and go like paired ones.
+        if first || ((paired || kind == Kind::LocalSend) && newly_online) {
             self.emit(CoreEvent::DeviceUpdated {
                 id: fingerprint,
                 alias: device.alias.clone(),
                 device_type: device.device_type.as_ref().map(type_name),
+                kind,
                 online: true,
                 paired,
             });
         }
     }
 
-    /// Reports paired devices that have not been seen for a while as offline.
+    /// Reports paired and LocalSend devices that have not been seen for a
+    /// while as offline.
     fn check_presence(&self) {
         let gone: Vec<String> = {
             let mut presence = self.presence.lock().unwrap();
@@ -482,17 +540,30 @@ impl Inner {
                     id: fingerprint,
                     alias: device.alias.clone(),
                     device_type: device.device_type.as_ref().map(type_name),
+                    kind: Kind::Wormhole,
                     online: false,
                     paired: true,
+                });
+            } else if let Some(found) = self.discovery.device_by_fingerprint(&fingerprint)
+                && Kind::of(found.device.device_model.as_deref()) == Kind::LocalSend
+            {
+                self.emit(CoreEvent::DeviceUpdated {
+                    id: fingerprint,
+                    alias: found.device.alias.clone(),
+                    device_type: found.device.device_type.as_ref().map(type_name),
+                    kind: Kind::LocalSend,
+                    online: false,
+                    paired: false,
                 });
             }
         }
     }
 
-    /// Sends every paired device with a known address a register request;
-    /// the ones that answer are confirmed through discovery events.
-    pub(crate) async fn probe_paired(&self) {
-        let channels: Vec<HttpChannel> = self
+    /// Sends a register request to every paired device with a known address,
+    /// and to the LocalSend devices seen recently; the ones that answer are
+    /// confirmed through discovery events.
+    pub(crate) async fn probe_known(&self) {
+        let mut channels: Vec<HttpChannel> = self
             .trust()
             .devices()
             .iter()
@@ -504,6 +575,22 @@ impl Inner {
                 })
             })
             .collect();
+        let recent = |fingerprint: &str| {
+            self.presence
+                .lock()
+                .unwrap()
+                .get(fingerprint)
+                .is_some_and(|p| p.last_seen.elapsed() < LOCALSEND_PROBE_WINDOW)
+        };
+        for found in self.discovery.devices() {
+            let device = &found.device;
+            if Kind::of(device.device_model.as_deref()) == Kind::LocalSend
+                && recent(&normalize_fingerprint(&device.fingerprint))
+                && let Some(http) = found.get_best_channel().and_then(|channel| channel.http())
+            {
+                channels.push(http.clone());
+            }
+        }
         if !channels.is_empty() {
             let _ = self.discovery.discover_known_http_channels(channels).await;
         }

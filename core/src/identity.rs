@@ -163,12 +163,11 @@ impl Identity {
     }
 }
 
+/// The device model every Wormhole Send device announces. It tells
+/// Wormhole Send devices (which pair) from LocalSend devices (which ask),
+/// and LocalSend shows it under the device name.
+pub const DEVICE_MODEL: &str = "Wormhole Send";
+
 fn device_model() -> Option<String> {
-    let model = match std::env::consts::OS {
-        "macos" => "macOS",
-        "windows" => "Windows",
-        "linux" => "Linux",
-        other => other,
-    };
-    Some(model.to_string())
+    Some(DEVICE_MODEL.to_string())
 }

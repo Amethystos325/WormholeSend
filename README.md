@@ -1,6 +1,6 @@
 # Wormhole Send
 
-局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
+局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。也能和手机、电脑上的 LocalSend 互传（每次由接收方确认）。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
 
 当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）中 Windows 端已接入：顶部岛、托盘菜单、设置、配对和首次引导都走真实核心。
 
@@ -26,6 +26,15 @@
 
 接收方正在接收别的设备的文件时，新的发送会排队：发送方显示“排队中 · 前面还有 N 个”，轮到后自动发送。
 
+## 和 LocalSend 互传
+
+LocalSend 设备（1.18 及以上）不能配对，但可以直接互传，每次由接收方确认：
+
+- LocalSend 发来文件时，`whs receive` 显示“XX 想发送 a.jpg 等 3 个文件”，输入 `y` 接收、`n` 拒绝，1 分钟不回答视为拒绝。发来的是一段文字时，接收后打印出来（刘海和顶部岛里是复制到剪贴板）。
+- 发给 LocalSend 设备：`whs send -t <LocalSend 设备名> 文件…`，显示“等待对方接收”，对方在 LocalSend 里点接收后开始传输。
+- `whs devices` 里 LocalSend 设备名后面带“（LocalSend）”。LocalSend 那边显示本机的设备型号为“Wormhole Send”。
+- 对方开了 PIN 时暂不支持发送。
+
 组播不通时（公司网络、开着 VPN），可以用 `whs trust add <指纹> --addr 192.168.1.20:53320` 手动添加地址（`trust` 命令只改本机，调试用）。
 
 ## 命令
@@ -38,14 +47,14 @@
 | `whs unpair <设备>` | 解除配对并通知对方 |
 | `whs trust list / add / remove / default` | 查看已配对设备；手动增删只改本机（调试用） |
 | `whs devices [--wait 秒]` | 搜索附近设备 |
-| `whs receive [--save-dir 目录]` | 持续接收已配对设备的文件，并处理配对请求（输入 y / n），Ctrl+C 退出 |
-| `whs send [-t 设备] 路径…` | 发送文件或文件夹，Ctrl+C 取消 |
+| `whs receive [--save-dir 目录]` | 持续接收已配对设备的文件，并处理配对请求和 LocalSend 的发送请求（输入 y / n），Ctrl+C 退出 |
+| `whs send [-t 设备] 路径…` | 发送文件或文件夹（设备可以是附近的 LocalSend 设备），Ctrl+C 取消 |
 
 全局参数：`--json` 按行输出 JSON 事件（字段与设计文档的事件表一致）；`--home 目录` 和 `--port 端口` 用于在一台电脑上模拟多台设备。
 
 ## 数据位置
 
-- 端口：传输服务 53320，控制服务 53321（配对、排队），组播 53320。被占用时临时命令会顺延到下一组端口。
+- 端口：传输服务 53320，控制服务 53321（配对、排队），组播 53317（与 LocalSend 相同，这样双方能互相发现；和本机上的 LocalSend 共用不冲突）。被占用时临时命令会顺延到下一组端口。
 - 数据目录：macOS 为 `~/Library/Application Support/WormholeSend`，Windows 为 `%APPDATA%\WormholeSend`。里面有 `identity.pem`（本机证书和私钥，删除后需要重新配对）、`settings.json`、`trust.json` 和 `pending.json`（还没送达的解除配对通知）。
 - 收到的文件默认存到“下载/Wormhole Send”，可用 `whs config --save-dir` 修改。
 

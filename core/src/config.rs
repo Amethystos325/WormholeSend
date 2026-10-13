@@ -4,14 +4,17 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// TCP port of the transfer service, and UDP port of the multicast discovery.
-/// Deliberately not LocalSend's 53317, so the two apps don't collide and
-/// LocalSend devices don't see Wormhole Send devices.
+/// TCP port of the transfer service (the control service takes the next
+/// one). Not LocalSend's 53317, so LocalSend can run on the same computer:
+/// the port is announced, and LocalSend devices connect to whatever port a
+/// device announces.
 pub const DEFAULT_PORT: u16 = 53320;
 
-/// UDP port of the multicast discovery. Fixed for every device, whatever
-/// port its transfer service listens on.
-pub const MULTICAST_PORT: u16 = 53320;
+/// UDP port of the multicast discovery: LocalSend's, so LocalSend devices
+/// and Wormhole Send devices find each other. Fixed for every device,
+/// whatever port its transfer service listens on; the socket is shared
+/// with a LocalSend app on the same computer.
+pub const MULTICAST_PORT: u16 = 53317;
 
 const SETTINGS_FILE: &str = "settings.json";
 

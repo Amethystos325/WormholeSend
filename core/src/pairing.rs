@@ -13,7 +13,7 @@ use crate::control::client::{ControlClient, control_addr};
 use crate::control::dto::{PairConfirm, PairRequest, PairRequestResponse, PairReveal};
 use crate::control::server::Peer;
 use crate::event::CoreEvent;
-use crate::node::{Inner, parse_type, type_name};
+use crate::node::{Inner, Kind, parse_type, type_name};
 use crate::trust::{TrustStore, TrustedDevice, normalize_fingerprint};
 use anyhow::{Context, anyhow, bail};
 use hyper::StatusCode;
@@ -75,6 +75,9 @@ pub(crate) fn start(inner: &Arc<Inner>, fingerprint: &str) -> anyhow::Result<Str
         .discovery
         .device_by_fingerprint(&peer)
         .context("找不到这台设备，确认它在线")?;
+    if Kind::of(device.device.device_model.as_deref()) == Kind::LocalSend {
+        bail!("{} 是 LocalSend 设备，不能配对；可以直接发送，对方确认后接收", device.device.alias);
+    }
     let http = device
         .get_best_channel()
         .and_then(|channel| channel.http())

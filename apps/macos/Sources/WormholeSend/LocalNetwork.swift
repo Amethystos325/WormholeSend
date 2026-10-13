@@ -36,7 +36,7 @@ enum LocalNetwork {
 /// Everything runs on `queue`, so only the first answer resumes.
 private final class Probe: @unchecked Sendable {
     private let queue = DispatchQueue(label: "wormhole.local-network")
-    private let connection = NWConnection(host: "224.0.0.167", port: 53320, using: .udp)
+    private let connection = NWConnection(host: "224.0.0.167", port: 53317, using: .udp)
     private var continuation: CheckedContinuation<Bool, Never>?
 
     init(_ continuation: CheckedContinuation<Bool, Never>) {

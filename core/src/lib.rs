@@ -1,9 +1,11 @@
 //! Wormhole Send core: identity, trust store, discovery and transfers, on top
-//! of the LocalSend protocol v2 (the `localsend` crate).
+//! of the LocalSend protocol v2 (the `localsend` crate), which LocalSend
+//! devices speak too.
 //!
 //! A transfer request is accepted without asking exactly when the sender's
 //! certificate fingerprint, verified in the mTLS handshake, is in the trust
-//! store. Everything else is declined.
+//! store. A LocalSend device, which cannot pair, waits while the user is
+//! asked. Everything else is declined.
 
 pub mod config;
 mod control;
@@ -17,4 +19,4 @@ mod save_path;
 mod send;
 pub mod trust;
 
-pub use node::{DeviceInfo, Node, NodeOptions};
+pub use node::{DeviceInfo, Kind, Node, NodeOptions};
