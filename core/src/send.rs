@@ -1,0 +1,478 @@
+//! The send side: locate the paired device, prepare-upload, then upload the
+//! files one by one.
+//!
+//! The upload loop is adapted from the LocalSend CLI (`cli/src/send_task.rs`,
+//! Apache-2.0).
+
+use crate::event::{CoreEvent, Direction, TransferStatus};
+use crate::node::{ActiveSend, Inner};
+use crate::trust::{TrustStore, TrustedDevice, normalize_fingerprint, short_fingerprint};
+use bytes::Bytes;
+use futures_util::StreamExt;
+use localsend::discovery::HttpChannel;
+use localsend::http::client::ClientError;
+use localsend::http::client::v2::LsHttpClientV2;
+use localsend::http::dto_v2::PrepareUploadRequestDtoV2;
+use localsend::model::discovery::ProtocolType;
+use localsend::model::transfer::{FileContent, FileDto, FileMetadata};
+use localsend::reqwest;
+use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+use walkdir::WalkDir;
+
+/// How long to probe the last known address of the device.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// How long to wait for the device to answer an announcement.
+const ANNOUNCE_WAIT: Duration = Duration::from_secs(2);
+
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Cancellation state of a send, shared between the node and the send task.
+#[derive(Clone)]
+pub(crate) struct SendCancel {
+    pub(crate) token: CancellationToken,
+    /// Set (before triggering `token`) when the receiver cancelled; only a
+    /// local cancellation still has to notify the receiver.
+    pub(crate) by_peer: Arc<AtomicBool>,
+}
+
+impl SendCancel {
+    fn new() -> Self {
+        Self {
+            token: CancellationToken::new(),
+            by_peer: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+struct Outcome {
+    status: TransferStatus,
+    files_done: usize,
+    bytes: u64,
+    error: Option<String>,
+}
+
+impl Outcome {
+    fn fail(status: TransferStatus, error: impl Into<String>) -> Self {
+        Self {
+            status,
+            files_done: 0,
+            bytes: 0,
+            error: Some(error.into()),
+        }
+    }
+
+    /// Cancelled on this device; the status says it all.
+    fn cancelled() -> Self {
+        Self {
+            status: TransferStatus::Cancelled,
+            files_done: 0,
+            bytes: 0,
+            error: None,
+        }
+    }
+}
+
+pub(crate) fn spawn(inner: Arc<Inner>, transfer_id: String, fingerprint: String, paths: Vec<PathBuf>) {
+    let cancel = SendCancel::new();
+    inner.sends.lock().unwrap().insert(
+        transfer_id.clone(),
+        ActiveSend {
+            session_id: None,
+            host: String::new(),
+            cancel: cancel.clone(),
+        },
+    );
+    tokio::spawn(async move {
+        let device = inner.trust().get(&fingerprint).cloned();
+        let alias = device
+            .as_ref()
+            .map_or_else(|| short_fingerprint(&fingerprint).to_string(), |d| d.alias.clone());
+        let outcome = match device {
+            Some(device) => run(&inner, &transfer_id, &device, paths, &cancel).await,
+            None => Outcome::fail(TransferStatus::Rejected, "目标设备没有配对"),
+        };
+        inner.sends.lock().unwrap().remove(&transfer_id);
+        inner.emit(CoreEvent::TransferFinished {
+            id: transfer_id,
+            direction: Direction::Send,
+            device_id: fingerprint,
+            alias,
+            status: outcome.status,
+            files_done: outcome.files_done,
+            bytes: outcome.bytes,
+            saved_paths: Vec::new(),
+            error: outcome.error,
+        });
+    });
+}
+
+async fn run(
+    inner: &Arc<Inner>,
+    transfer_id: &str,
+    device: &TrustedDevice,
+    paths: Vec<PathBuf>,
+    cancel: &SendCancel,
+) -> Outcome {
+    let fingerprint = &device.fingerprint;
+    let (files, sources, total) = collect_files(inner, &paths);
+    if files.is_empty() {
+        return Outcome::fail(TransferStatus::Failed, "没有可发送的文件");
+    }
+
+    let http = tokio::select! {
+        http = locate(inner, device) => http,
+        _ = cancel.token.cancelled() => return Outcome::cancelled(),
+    };
+    let Some(http) = http else {
+        return Outcome::fail(TransferStatus::Offline, format!("{} 不在线", device.alias));
+    };
+    if let Some(send) = inner.sends.lock().unwrap().get_mut(transfer_id) {
+        send.host = http.host.clone();
+    }
+
+    inner.emit(CoreEvent::TransferStarted {
+        id: transfer_id.to_string(),
+        direction: Direction::Send,
+        device_id: fingerprint.clone(),
+        alias: device.alias.clone(),
+        files: files.len(),
+        total,
+    });
+
+    // Pinned to the paired fingerprint: a device impersonating it fails the
+    // TLS handshake.
+    let client = match LsHttpClientV2::try_new(
+        &inner.identity.key_pem,
+        &inner.identity.cert_pem,
+        Some(fingerprint.clone()),
+        None,
+    ) {
+        Ok(client) => Arc::new(client),
+        Err(err) => return Outcome::fail(TransferStatus::Failed, format!("无法创建连接：{err}")),
+    };
+    let protocol = ProtocolType::Https;
+
+    let prepared = client
+        .prepare_upload(
+            protocol,
+            &http.host,
+            http.port,
+            None,
+            PrepareUploadRequestDtoV2 {
+                info: inner.identity.register_dto(),
+                files: files.clone(),
+            },
+            None,
+            cancel.token.clone(),
+        )
+        .await;
+    let prepared = match prepared {
+        Ok(prepared) => prepared,
+        Err(ClientError::Cancelled) => return Outcome::cancelled(),
+        Err(ClientError::StatusCode(err)) => {
+            return match err.status {
+                403 => Outcome::fail(
+                    TransferStatus::Rejected,
+                    format!("{} 没有信任本机（未配对或已解除配对）", device.alias),
+                ),
+                409 => Outcome::fail(
+                    TransferStatus::Busy,
+                    format!("{} 正在接收其他文件", device.alias),
+                ),
+                status => Outcome::fail(TransferStatus::Failed, format!("请求失败（HTTP {status}）")),
+            };
+        }
+        Err(err) => return Outcome::fail(TransferStatus::Failed, err.to_string()),
+    };
+    let Some(response) = prepared.response else {
+        return Outcome::fail(TransferStatus::Failed, "对方没有接收任何文件");
+    };
+    if response.session_id.is_empty()
+        || response.files.is_empty()
+        || response
+            .files
+            .iter()
+            .any(|(id, token)| !files.contains_key(id) || token.is_empty())
+    {
+        return Outcome::fail(TransferStatus::Failed, "对方的响应无效");
+    }
+    if let Some(send) = inner.sends.lock().unwrap().get_mut(transfer_id) {
+        send.session_id = Some(response.session_id.clone());
+    }
+
+    // On a local cancellation, tell the receiver before aborting the upload:
+    // aborted first, the receiver would see a failed file and end the session
+    // as finished-with-errors before the cancel request arrives.
+    let upload_token = CancellationToken::new();
+    let watcher = tokio::spawn({
+        let (client, cancel, upload_token) = (client.clone(), cancel.clone(), upload_token.clone());
+        let (host, port, session_id) = (http.host.clone(), http.port, response.session_id.clone());
+        async move {
+            cancel.token.cancelled().await;
+            if !cancel.by_peer.load(Ordering::Relaxed) {
+                let notify = client.cancel(protocol, &host, port, &session_id);
+                let _ = tokio::time::timeout(PROBE_TIMEOUT, notify).await;
+            }
+            upload_token.cancel();
+        }
+    });
+
+    let progress = Arc::new(AtomicU64::new(0));
+    let accepted_total: u64 = response
+        .files
+        .keys()
+        .filter_map(|id| files.get(id))
+        .map(|file| file.size)
+        .sum();
+    let ticker = tokio::spawn({
+        let inner = inner.clone();
+        let progress = progress.clone();
+        let (id, device_id) = (transfer_id.to_string(), fingerprint.clone());
+        async move {
+            let mut interval = tokio::time::interval(PROGRESS_INTERVAL);
+            loop {
+                interval.tick().await;
+                inner.emit(CoreEvent::TransferProgress {
+                    id: id.clone(),
+                    direction: Direction::Send,
+                    device_id: device_id.clone(),
+                    bytes: progress.load(Ordering::Relaxed),
+                    total: accepted_total,
+                });
+            }
+        }
+    });
+
+    // Upload sequentially, in name order.
+    let mut file_ids: Vec<&String> = response.files.keys().collect();
+    file_ids.sort_by_key(|id| &files[*id].file_name);
+    let mut sources = sources;
+    let mut outcome = Outcome {
+        status: TransferStatus::Done,
+        files_done: 0,
+        bytes: 0,
+        error: None,
+    };
+    for file_id in file_ids {
+        let file = &files[file_id];
+        let Some(path) = sources.remove(file_id.as_str()) else {
+            continue;
+        };
+        let body = {
+            let progress = progress.clone();
+            let base = outcome.bytes;
+            upload_body(FileContent::Path(path), move |sent| {
+                progress.store(base + sent, Ordering::Relaxed);
+            })
+        };
+        let result = client
+            .upload(
+                protocol,
+                &http.host,
+                http.port,
+                None,
+                &response.session_id,
+                file_id,
+                &response.files[file_id],
+                body,
+                upload_token.clone(),
+            )
+            .await;
+        match result {
+            Ok(()) => {
+                outcome.files_done += 1;
+                outcome.bytes += file.size;
+                progress.store(outcome.bytes, Ordering::Relaxed);
+            }
+            // A failure caused by the receiver closing the session after the
+            // cancel counts as the cancellation too.
+            Err(_) if cancel.token.is_cancelled() => {
+                if cancel.by_peer.load(Ordering::Relaxed) {
+                    outcome.error = Some(format!("{} 取消了接收", device.alias));
+                }
+                outcome.status = TransferStatus::Cancelled;
+                break;
+            }
+            Err(err) => {
+                let _ = client
+                    .cancel(protocol, &http.host, http.port, &response.session_id)
+                    .await;
+                outcome.status = TransferStatus::Failed;
+                outcome.error = Some(format!("{} 发送失败：{err}", file.file_name));
+                break;
+            }
+        }
+    }
+    ticker.abort();
+    watcher.abort();
+    inner.emit(CoreEvent::TransferProgress {
+        id: transfer_id.to_string(),
+        direction: Direction::Send,
+        device_id: fingerprint.clone(),
+        bytes: outcome.bytes,
+        total: accepted_total,
+    });
+    if outcome.status == TransferStatus::Done {
+        let _ = TrustStore::update(&inner.home, |store| (store.record_sent(fingerprint), ()));
+    }
+    outcome
+}
+
+/// Finds a dialable address of the device: the one discovery saw recently,
+/// else its last known address, else whatever answers an announcement.
+async fn locate(inner: &Arc<Inner>, device: &TrustedDevice) -> Option<HttpChannel> {
+    let fingerprint = &device.fingerprint;
+    if inner.is_online(fingerprint)
+        && let Some(channel) = known_channel(inner, fingerprint)
+    {
+        return Some(channel);
+    }
+
+    if let (Some(host), Some(port)) = (&device.last_host, device.last_port) {
+        let probe = inner.discovery.discover(host, port, ProtocolType::Https);
+        if let Ok(Ok(Some(found))) = tokio::time::timeout(PROBE_TIMEOUT, probe).await
+            && normalize_fingerprint(&found.device.fingerprint) == *fingerprint
+            && let Some(http) = found.get_best_channel().and_then(|channel| channel.http())
+        {
+            return Some(http.clone());
+        }
+    }
+
+    tokio::spawn({
+        let inner = inner.clone();
+        async move { inner.discovery.announce().await }
+    });
+    let deadline = tokio::time::Instant::now() + ANNOUNCE_WAIT;
+    while tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if inner.is_online(fingerprint)
+            && let Some(channel) = known_channel(inner, fingerprint)
+        {
+            return Some(channel);
+        }
+    }
+    None
+}
+
+fn known_channel(inner: &Inner, fingerprint: &str) -> Option<HttpChannel> {
+    inner
+        .discovery
+        .device_by_fingerprint(fingerprint)?
+        .get_best_channel()?
+        .http()
+        .cloned()
+}
+
+/// Expands files and folders into protocol v2 file metadata keyed by a fresh
+/// file ID, the local paths under the same IDs, and the total size. Folder
+/// entries are named `<folder>/<relative path>` so the receiver can rebuild
+/// the folder. Unreadable entries are skipped with an error event.
+fn collect_files(
+    inner: &Inner,
+    picked: &[PathBuf],
+) -> (HashMap<String, FileDto>, HashMap<String, PathBuf>, u64) {
+    let mut files = HashMap::new();
+    let mut paths = HashMap::new();
+    let mut total = 0u64;
+    for (path, file_name) in picked.iter().flat_map(|path| expand(inner, path)) {
+        let metadata = match std::fs::metadata(&path) {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => {
+                inner.emit(CoreEvent::Error {
+                    message: format!("跳过无法读取的文件：{}", path.display()),
+                });
+                continue;
+            }
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        total += metadata.len();
+        files.insert(
+            id.clone(),
+            FileDto {
+                id: id.clone(),
+                file_name,
+                size: metadata.len(),
+                file_type: mime_guess::from_path(&path)
+                    .first_or_octet_stream()
+                    .to_string(),
+                sha256: None,
+                preview: None,
+                metadata: FileMetadata::from_fs_metadata(&metadata),
+            },
+        );
+        paths.insert(id, path);
+    }
+    (files, paths, total)
+}
+
+fn expand(inner: &Inner, path: &Path) -> Vec<(PathBuf, String)> {
+    if path.is_file() {
+        let name = path
+            .file_name()
+            .map_or_else(|| "unnamed".to_string(), |name| name.to_string_lossy().into_owned());
+        return vec![(path.to_path_buf(), name)];
+    }
+    if !path.is_dir() {
+        inner.emit(CoreEvent::Error {
+            message: format!("跳过不存在的路径：{}", path.display()),
+        });
+        return Vec::new();
+    }
+    let root = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .or_else(|| {
+            path.canonicalize()
+                .ok()?
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "folder".to_string());
+    WalkDir::new(path)
+        .min_depth(1)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_map(|entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    inner.emit(CoreEvent::Error {
+                        message: format!("跳过无法读取的路径：{err}"),
+                    });
+                    return None;
+                }
+            };
+            if !entry.file_type().is_file() {
+                return None;
+            }
+            let relative = entry.path().strip_prefix(path).ok()?;
+            let name = std::iter::once(root.clone())
+                .chain(relative.components().filter_map(|component| match component {
+                    Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
+                    _ => None,
+                }))
+                .collect::<Vec<_>>()
+                .join("/");
+            Some((entry.path().to_path_buf(), name))
+        })
+        .collect()
+}
+
+/// A streaming request body from the file content, reporting the bytes of
+/// this file sent so far.
+fn upload_body(content: FileContent, progress: impl Fn(u64) + Send + 'static) -> reqwest::Body {
+    let mut sent = 0u64;
+    let stream = content.into_stream().map(move |chunk| {
+        let chunk = chunk?;
+        sent += chunk.len() as u64;
+        progress(sent);
+        Ok::<Bytes, anyhow::Error>(chunk)
+    });
+    reqwest::Body::wrap_stream(stream)
+}
