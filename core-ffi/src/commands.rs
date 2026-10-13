@@ -35,8 +35,10 @@ pub(crate) fn run(shared: &Arc<Shared>, command: &Value) -> anyhow::Result<Value
         }
         "discover.list" => {
             node.refresh_in_background();
+            // Only devices heard from within the online window: discovery
+            // keeps every device seen since the start, gone or not.
             Ok(serde_json::to_value(
-                node.devices().into_iter().filter(|d| !d.paired).collect::<Vec<_>>(),
+                node.devices().into_iter().filter(|d| !d.paired && d.online).collect::<Vec<_>>(),
             )?)
         }
         "send" => {

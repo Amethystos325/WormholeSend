@@ -37,7 +37,7 @@ The events and their fields are the table in the design doc (section 4.2), from 
 | --- | --- | --- |
 | `devices.list` | | Paired devices, default first: `[{fingerprint, alias, deviceType, host, port, online, paired, isDefault, needsRepair}]` |
 | `devices.refresh` | | `null`; announces this device and probes paired ones, answers come as `device.updated` |
-| `discover.list` | | Nearby devices that are not paired (same fields); also refreshes, so call it again while a pairing window is open |
+| `discover.list` | | Nearby devices that are online (heard from within 60 s) and not paired, same fields; also announces this device, and the answers show on the next call, so call it again while a pairing window is open |
 | `send` | `deviceId`, `paths` | Transfer ID; then `transfer.queued` (receiver busy) / `transfer.started` / `transfer.progress` / `transfer.finished` |
 | `transfer.cancel` | `transferId` | Whether it was still running |
 | `transfer.retry` | `transferId` | A new transfer ID: the same device and paths again |
