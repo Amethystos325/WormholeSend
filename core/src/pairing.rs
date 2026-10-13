@@ -298,9 +298,6 @@ pub(crate) fn confirm(inner: &Arc<Inner>, pair_id: &str, accept: bool) -> anyhow
         }
         pair
     };
-    if !accept {
-        inner.emit(result(&pair, false, Some("已拒绝")));
-    }
     let inner = inner.clone();
     tokio::spawn(async move {
         let delivered = match control_addr(&pair.host, pair.port) {
@@ -318,6 +315,9 @@ pub(crate) fn confirm(inner: &Arc<Inner>, pair_id: &str, accept: bool) -> anyhow
             None => false,
         };
         if !accept {
+            // Reported only after the other side was told, so a short-lived
+            // process (whs pair) doesn't exit before the decline reaches it.
+            inner.emit(result(&pair, false, Some("已拒绝")));
             return;
         }
         let mut state = inner.pairings.state.lock().unwrap();
