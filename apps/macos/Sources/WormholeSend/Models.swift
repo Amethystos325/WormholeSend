@@ -59,6 +59,7 @@ struct Transfer: Equatable {
     var label: String
     var progress: Double = 0
     var count: Int
+    var stats = TransferStats()
 
     init(id: String? = nil, device: Device, files: [URL], label: String, progress: Double = 0, count: Int? = nil) {
         self.id = id
@@ -72,12 +73,76 @@ struct Transfer: Equatable {
     var fileCount: Int { count }
 }
 
+/// Bytes and files done of a transfer, and its speed, from the core's
+/// progress events.
+struct TransferStats: Equatable {
+    var bytes: Int64 = 0
+    var total: Int64 = 0
+    var filesDone = 0
+    /// Every file, those inside folders included.
+    var files = 0
+    /// Bytes per second over the last two seconds, once a second is measured.
+    private(set) var speed: Double?
+    private var samples: [Sample] = []
+
+    private struct Sample: Equatable {
+        let time: TimeInterval
+        let bytes: Int64
+    }
+
+    private static let window: TimeInterval = 2
+
+    init(total: Int64 = 0, files: Int = 0) {
+        self.total = total
+        self.files = files
+    }
+
+    mutating func update(bytes: Int64, total: Int64, filesDone: Int, at time: TimeInterval) {
+        self.bytes = bytes
+        self.total = total
+        self.filesDone = filesDone
+        samples.append(Sample(time: time, bytes: bytes))
+        samples.removeAll { time - $0.time > Self.window }
+        if let first = samples.first, time - first.time >= 1 {
+            speed = Double(bytes - first.bytes) / (time - first.time)
+        }
+    }
+
+    /// "1.2 GB / 2.1 GB · 45.3 MB/s" for one file, "3 / 12 个文件 · 45.3 MB/s"
+    /// for several or a folder.
+    var line: String {
+        var parts = [files > 1 ? "\(filesDone) / \(files) 个文件" : "\(Self.size(bytes)) / \(Self.size(total))"]
+        if let speed { parts.append("\(Self.size(Int64(speed)))/s") }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// What a drag carries, named after its first item: "季度报告.pdf",
+/// "文件夹 设计稿", "季度报告.pdf 等 3 个文件", "设计稿 等 2 个文件夹",
+/// "季度报告.pdf 等 4 个文件或文件夹".
 enum FileLabel {
     static func of(_ urls: [URL]) -> String {
-        switch urls.count {
-        case 0: "文件"
-        case 1: urls[0].lastPathComponent
-        default: "\(urls.count) 个文件"
+        guard let first = urls.first else { return "文件" }
+        let name = first.lastPathComponent
+        let folders = urls.filter(isFolder).count
+        if urls.count == 1 {
+            return folders == 1 ? "文件夹 \(name)" : name
         }
+        let kind = switch folders {
+        case 0: "文件"
+        case urls.count: "文件夹"
+        default: "文件或文件夹"
+        }
+        return "\(name) 等 \(urls.count) 个\(kind)"
+    }
+
+    /// Packages such as apps are folders on disk but files to the user.
+    private static func isFolder(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        return values?.isDirectory == true && values?.isPackage != true
     }
 }

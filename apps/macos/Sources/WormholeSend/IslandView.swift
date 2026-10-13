@@ -115,7 +115,7 @@ struct IslandView: View {
             if let transfer = model.transfer {
                 ProgressContent(
                     device: transfer.device, title: "发送到 \(transfer.device.name)",
-                    progress: transfer.progress, onCancel: model.cancelTransfer)
+                    progress: transfer.progress, detail: transfer.stats.line, onCancel: model.cancelTransfer)
             }
         case .queued(let position):
             if compactQueued {
@@ -274,10 +274,12 @@ private struct SingleTargetContent: View {
                 Text("松手发送到 \(device.name)")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Palette.text)
-                Text("\(label) · 已配对，对方无需确认")
+                Text(label)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.secondary)
                     .lineLimit(1)
+                    // Keeps "等 3 个文件" when a long name has to give way.
+                    .truncationMode(.middle)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,6 +298,7 @@ private struct PickerContent: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Palette.secondary)
                 .lineLimit(1)
+                .truncationMode(.middle)
                 .padding(.leading, 4)
             HStack(spacing: 6) {
                 ForEach(Array(devices.enumerated()), id: \.element.id) { index, device in
@@ -357,6 +360,7 @@ private struct StatusLine: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Palette.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
         }
     }
@@ -366,6 +370,8 @@ private struct ProgressContent: View {
     let device: Device
     let title: String
     let progress: Double
+    /// Sizes or files done, and the speed.
+    let detail: String
     let onCancel: () -> Void
 
     var body: some View {
@@ -383,6 +389,11 @@ private struct ProgressContent: View {
                         .foregroundStyle(Palette.secondary)
                 }
                 ProgressBar(value: progress, height: 4, fill: Palette.accent)
+                Text(detail)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Palette.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             CancelButton(action: onCancel)
         }

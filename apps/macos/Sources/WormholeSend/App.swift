@@ -350,7 +350,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let folder = NSMenuItem(title: "打开接收文件夹", action: #selector(openSaveFolder), keyEquivalent: "")
             folder.target = self
             folder.image = icon("folder")
+            if #available(macOS 14.4, *), let path = settings?.saveDir {
+                folder.subtitle = (path as NSString).abbreviatingWithTildeInPath
+            }
             menu.addItem(folder)
+            let change = NSMenuItem(title: "更改接收文件夹…", action: #selector(changeSaveFolder), keyEquivalent: "")
+            change.target = self
+            change.image = icon("folder.badge.gearshape")
+            menu.addItem(change)
+            let sounds = NSMenuItem(title: "提示音", action: #selector(toggleSounds), keyEquivalent: "")
+            sounds.target = self
+            sounds.image = icon("speaker.wave.2")
+            sounds.state = Sound.enabled ? .on : .off
+            menu.addItem(sounds)
             menu.addItem(.separator())
         }
         let quit = NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -425,6 +437,30 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .success(let pairId): startedPairs.insert(pairId)
         case .failure(let failure): inform("配对失败", failure.message)
         }
+    }
+
+    /// The core saves it and restarts its services; it refuses while files
+    /// are being transferred.
+    @objc private func changeSaveFolder() {
+        guard let core else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "选择"
+        panel.message = "收到的文件会保存到这个文件夹"
+        if let path = settings?.saveDir { panel.directoryURL = URL(fileURLWithPath: path) }
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        switch core.call("settings.set", ["saveDir": url.path], as: Settings.self) {
+        case .success(let saved): settings = saved
+        case .failure(let failure): inform("无法更改接收文件夹", failure.message)
+        }
+    }
+
+    @objc private func toggleSounds() {
+        Sound.enabled.toggle()
+        if Sound.enabled { Sound.sent.play() }
     }
 
     @objc private func openSaveFolder() {

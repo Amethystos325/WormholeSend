@@ -39,6 +39,11 @@ enum Demo {
             case "sending":
                 model.transfer = sample
                 model.transfer?.progress = 0.45
+                // Two progress reports a second apart, so the speed shows.
+                var stats = TransferStats(total: 2_100_000_000, files: 1)
+                stats.update(bytes: 900_000_000, total: 2_100_000_000, filesDone: 0, at: 0)
+                stats.update(bytes: 945_000_000, total: 2_100_000_000, filesDone: 0, at: 1)
+                model.transfer?.stats = stats
                 model.phase = .sending
             case "queued":
                 model.transfer = sample

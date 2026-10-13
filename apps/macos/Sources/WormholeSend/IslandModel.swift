@@ -239,6 +239,7 @@ final class IslandModel {
     }
 
     private func fail(_ reason: String) {
+        Sound.failed.play()
         phase = .failed(reason)
         schedule(after: Spec.failedHold) { [weak self] in
             if case .failed = self?.phase { self?.settle() }
@@ -260,6 +261,7 @@ final class IslandModel {
         case .success(let newId):
             transfer?.id = newId
             transfer?.progress = 0
+            transfer?.stats = TransferStats()
             phase = .sending
         case .failure(let failure):
             fail(failure.message)
@@ -276,6 +278,7 @@ final class IslandModel {
         case "pair.code":
             if let id = event.pairId, let alias = incomingPairs[id], let code = event.code {
                 pendingRequest = .pairRequest(pairId: id, alias: alias, code: code)
+                Sound.pairRequest.play()
                 if canShowPairRequest { settle() }
             }
         case "pair.result":
@@ -293,6 +296,7 @@ final class IslandModel {
         case "transfer.started" where event.direction == "send" && isCurrentSend(event):
             cancelTimers()
             transfer?.progress = 0
+            transfer?.stats = TransferStats(total: event.total ?? 0, files: event.files ?? 0)
             phase = .sending
         case "transfer.started" where event.direction == "receive":
             receiveStarted(event)
@@ -300,6 +304,9 @@ final class IslandModel {
             let progress = event.total.map { $0 > 0 ? Double(event.bytes ?? 0) / Double($0) : 0 } ?? 0
             if event.direction == "send", isCurrentSend(event) {
                 transfer?.progress = progress
+                transfer?.stats.update(
+                    bytes: event.bytes ?? 0, total: event.total ?? 0, filesDone: event.filesDone ?? 0,
+                    at: ProcessInfo.processInfo.systemUptime)
             } else if event.direction == "receive", incoming?.id == event.id {
                 incoming?.progress = progress
                 if phase == .receiving { transfer?.progress = progress }
@@ -321,6 +328,7 @@ final class IslandModel {
         cancelTimers()
         switch event.status {
         case "done":
+            Sound.sent.play()
             transfer?.progress = 1
             phase = .done
             schedule(after: Spec.doneHold) { [weak self] in self?.settle() }
@@ -351,6 +359,7 @@ final class IslandModel {
             finished.files = (event.savedPaths ?? []).map { URL(fileURLWithPath: $0) }
             finished.count = event.filesDone ?? finished.count
             finished.progress = 1
+            Sound.received.play()
             guard shown else { return }
             cancelTimers()
             transfer = finished
@@ -358,6 +367,8 @@ final class IslandModel {
             holdReceived()
         } else if phase == .receiving {
             cancelTimers()
+            // A cancel was the sender's choice; only a broken connection sounds.
+            if event.status != "cancelled" { Sound.failed.play() }
             phase = .interrupted(event.status == "cancelled" ? "对方取消了发送" : "连接中断")
             schedule(after: Spec.failedHold) { [weak self] in self?.settle() }
         }
@@ -502,7 +513,8 @@ final class IslandModel {
         case .queued where queueCollapsed:
             if case .notch(let width, let height) = mode { return CGSize(width: width + 76, height: height) }
             return CGSize(width: 150, height: 30)
-        case .sending, .queued: content = CGSize(width: 340, height: 40)
+        case .sending: content = CGSize(width: 340, height: 56)
+        case .queued: content = CGSize(width: 340, height: 40)
         case .done, .failed, .refused, .interrupted, .pairWaiting, .notice: content = CGSize(width: 340, height: 28)
         case .pairRequest: content = CGSize(width: 380, height: 78)
         case .receiving: content = CGSize(width: 384, height: 60)
