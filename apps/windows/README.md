@@ -40,6 +40,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 - Full-screen apps hide the windows on their screen: what the shell reports as full screen (QUNS_BUSY, D3D, presentation mode) or a window without a title bar covering the monitor. Ordinary maximized windows don't.
 - Received files can be dragged out to Explorer or the desktop; they are copied, not moved.
 - Phases the macOS spike doesn't have yet: `pairRequest` (another device asks to pair; 380 × 78 content, the code on the right, 拒绝 / 配对), `pairWaiting` and `notice` (340 × 28 status lines). `interrupted(reason)` matches the macOS app.
+- LocalSend devices (the LocalSend app, which can't pair) come after the paired ones in the device list, marked "LocalSend"; the default device is always a paired one, and without paired devices a drag goes straight to the list. Sending to one waits ("等待 … 接收…", `awaitingAcceptance`) until its user accepts; declining ends as a failure. A LocalSend device that sends here asks first (`receiveRequest`: 拒绝 / 接收 with the size, or 忽略 / 复制 with the start of a text message, which is copied to the clipboard), as a pairing request does: after a drag or a send, with the pairing request's sound.
 - While receiving, a new drag takes over the island; the receive shows again afterwards. A send shows before a receive (design doc 2.2).
 
 ## Command line
@@ -52,7 +53,7 @@ WormholeSend.exe --selftest --log                     # drags through OLE, witho
 WormholeSend.exe --fake --menu [--snapshot out.png]   # the tray menu with a submenu open, at the screen center
 ```
 
-`--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `pair-request` `notice`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.
+`--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `pair-request` `notice`, and for LocalSend `receive-request` `receive-text` `copied` `awaiting` `picker-localsend`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.
 
 ## Checks
 
@@ -66,7 +67,7 @@ Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest
 
 ## Not done yet
 
-- Installer, with Inno Setup (design doc 9). It should add firewall rules for TCP 53320, TCP 53321 and UDP 53320, use `assets/app-icon.ico`, and be code-signed against SmartScreen.
+- Installer, with Inno Setup (design doc 9). It should add firewall rules for TCP 53320, TCP 53321 and UDP 53317 (discovery, LocalSend's port), use `assets/app-icon.ico`, and be code-signed against SmartScreen.
 - The private key is in `identity.pem`, not yet protected with DPAPI (design doc 3.3).
 - A hint "正在发送" when dragging in during a send (2.1); for now such a drag is ignored.
 
@@ -88,6 +89,8 @@ Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest
 - [ ] Sending shows "945 MB / 2.1 GB · 45 MB/s" under the bar, or "3 / 12 个文件 · …" for several files or a folder; the speed after a second
 - [ ] Long names shorten in the middle and keep "等 N 个文件": the target, the device list, "已送达"
 - [ ] Sounds: delivered, received, a failed send, a receive that breaks off (not when the sender cancels), a pairing request
+- [ ] A LocalSend app on the network: it shows in the device list as "LocalSend"; sending waits for its user, then runs, or fails with "… 拒绝了接收"
+- [ ] The LocalSend app sends files: the island asks (拒绝 / 接收), then receives; it sends a text: 复制 copies it and says so
 - [ ] Tray menu: default device (offline grey), 配对新设备, 打开接收文件夹, 提示音 (plays one when turned on), 设置, 退出
 - [ ] Second monitor: dragging into its sensor opens the island there; incoming transfers show on the primary screen
 - [ ] 150 % scaling, and monitors with different scaling: crisp, at the top center of each

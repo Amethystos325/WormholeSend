@@ -17,7 +17,8 @@ namespace WormholeSend;
 /// menu, without the core. `--demo` freezes one phase, as in the macOS
 /// app: hint, target, picker, picker-offline, single, unavailable, sending,
 /// queued, queued-compact, done, failed, refused, receiving, received,
-/// pair-request, notice. `--snapshot` captures the island's window from the
+/// pair-request, notice; and for LocalSend devices receive-request,
+/// receive-text, copied, awaiting, picker-localsend. `--snapshot` captures the island's window from the
 /// screen once the animation settled, then quits. `--selftest` runs the
 /// drag checks in SelfTest.cs and exits with their result. `--menu` opens
 /// the tray menu with a submenu at the screen center, for a look.
@@ -129,6 +130,18 @@ static class Demo
                     model.Phase = name == "receiving" ? new Phase.Receiving() : new Phase.Received();
                     break;
                 case "pair-request": model.Phase = new Phase.PairRequest("demo", "MacBook Air", "482019"); break;
+                case "receive-request":
+                    model.Phase = new Phase.ReceiveRequest("demo", "Pixel 8", "IMG_0001.jpg 等 3 个文件", 8_400_000, null);
+                    break;
+                case "receive-text":
+                    model.Phase = new Phase.ReceiveRequest("demo", "Pixel 8", "一段文字", 0, SampleText);
+                    break;
+                case "copied": model.Phase = new Phase.Notice("已复制到剪贴板", true, IslandModel.Preview(SampleText)); break;
+                case "awaiting": model.Phase = new Phase.AwaitingAcceptance("Pixel 8"); break;
+                case "picker-localsend":
+                    model.LocalSendDevices = Device.LocalSendSamples;
+                    model.Phase = new Phase.Picker(3);
+                    break;
                 case "notice": model.Phase = new Phase.Notice("已与 MacBook Air 配对", Success: true); break;
                 default:
                     Log.Write($"Unknown demo phase: {name}");
@@ -137,6 +150,9 @@ static class Demo
         });
         if (options.Snapshot is { } path) After(1800, () => app.Snapshot(path));
     }
+
+    /// A text message from a LocalSend device, for the demos and `--fake`.
+    public const string SampleText = "明天下午三点在 3 楼会议室开评审会，记得带上投影转接头和上周的评审记录，会后一起把发布日期定下来。";
 
     static void After(int milliseconds, Action action)
     {

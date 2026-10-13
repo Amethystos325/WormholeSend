@@ -21,15 +21,16 @@ abstract class PhaseContent : DockPanel
     {
         Phase.Hint => new HintContent(model.HintText),
         Phase.Target when model.DefaultDevice is { } device =>
-            new TargetContent(device, model.Devices.Where(d => !d.IsDefault).ToList()),
-        Phase.Picker when model.Devices.Count == 1 => new SingleTargetContent(model.Devices[0], model.DragLabel),
-        Phase.Picker => new PickerContent(model.Devices, model.DragLabel),
+            new TargetContent(device, model.Targets.Where(d => d != device).ToList()),
+        Phase.Picker when model.Targets.Count == 1 => new SingleTargetContent(model.Targets[0], model.DragLabel),
+        Phase.Picker => new PickerContent(model.Targets, model.DragLabel),
         // Its content is 24 high, not 28 as the other status lines.
         Phase.Unavailable u => new StatusLine(Glyphs.NoNetwork, Palette.Secondary, u.Text) { Height = 24 },
         Phase.Sending when model.Transfer is { } t =>
             new ProgressContent(t.Device, $"发送到 {t.Device.Name}", model.CancelTransfer),
         Phase.Queued when compactQueued => new CompactQueued(),
         Phase.Queued q => new QueuedContent(q.Position, model.CancelTransfer),
+        Phase.AwaitingAcceptance a => new AwaitingContent(a.Alias, model.CancelTransfer),
         Phase.Done when model.Transfer is { } t =>
             new StatusLine(Glyphs.CheckFilled, Palette.Success, $"已送达 {t.Device.Name}", t.Label),
         Phase.Failed f => new FailedContent(f.Reason, model.Retry),
@@ -37,9 +38,10 @@ abstract class PhaseContent : DockPanel
         Phase.Receiving when model.Transfer is { } t => new ReceivingContent(t),
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
         Phase.PairRequest p => new PairRequestContent(p, model.AnswerPair),
+        Phase.ReceiveRequest r => new ReceiveRequestContent(r, model.AnswerReceive),
         Phase.PairWaiting p => new StatusLine(Glyphs.Clock, Palette.Secondary, $"等待 {p.Alias} 确认…"),
-        Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text),
-        Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text),
+        Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text, n.Detail),
+        Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text, n.Detail),
         Phase.Interrupted i => new StatusLine(Glyphs.WarningFilled, Palette.Warning, "传输中断", i.Reason),
         _ => new EmptyContent(),
     };
@@ -187,7 +189,7 @@ sealed class DeviceTile : Border
         Child = column;
     }
 
-    string Status => device.NeedsRepair ? "需重新配对" : (device.Online, device.IsDefault) switch
+    string Status => device.LocalSend ? "LocalSend" : device.NeedsRepair ? "需重新配对" : (device.Online, device.IsDefault) switch
     {
         (true, true) => "在线 · 默认",
         (true, false) => "在线",
@@ -292,6 +294,27 @@ sealed class QueuedContent : PhaseContent
     }
 
     void SetPosition(int position) => title.Text = $"排队中 · 前面还有 {position} 个";
+}
+
+/// Sending to a LocalSend device whose user hasn't accepted yet.
+sealed class AwaitingContent : PhaseContent
+{
+    public AwaitingContent(string alias, Action onCancel)
+    {
+        var icon = Ui.Dock(Ui.Icon(Glyphs.Clock, 17, Palette.Secondary), Dock.Left);
+        icon.Margin = new Thickness(0, 0, 10, 0);
+        Children.Add(icon);
+        var cancel = Ui.Dock(new CancelButton(onCancel), Dock.Right);
+        cancel.Margin = new Thickness(4, 0, 0, 0);
+        Children.Add(cancel);
+        var column = Ui.Column(2,
+            Ui.Text($"等待 {alias} 接收…", 13, Palette.Text, FontWeights.Medium),
+            Ui.Text("对方用 LocalSend，接收后开始发送", 11, Palette.Secondary));
+        column.VerticalAlignment = VerticalAlignment.Center;
+        Children.Add(column);
+        VerticalAlignment = VerticalAlignment.Top;
+        Height = 40;
+    }
 }
 
 /// The queued state after a few seconds: a small capsule with a dot.
@@ -399,6 +422,50 @@ sealed class PairRequestContent : PhaseContent
         var titles = Ui.Column(2,
             Ui.Text($"{request.Alias} 请求配对", 13, Palette.Text, FontWeights.Medium),
             Ui.Text("两边显示的数字一致才配对", 11, Palette.Secondary));
+        titles.VerticalAlignment = VerticalAlignment.Center;
+        Children.Add(titles);
+        VerticalAlignment = VerticalAlignment.Top;
+    }
+}
+
+/// A LocalSend device asks to send: what and how much, or the start of a
+/// text message, with 拒绝 / 接收 (忽略 / 复制 for a text).
+sealed class ReceiveRequestContent : PhaseContent
+{
+    public ReceiveRequestContent(Phase.ReceiveRequest request, Action<bool> answer)
+    {
+        var text = request.Text is not null;
+        var buttons = Ui.Row(8,
+            new PillButton(text ? "忽略" : "拒绝", () => answer(false)),
+            new PillButton(text ? "复制" : "接收", () => answer(true), Palette.Accent));
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
+        buttons.Margin = new Thickness(0, 10, 0, 0);
+        Children.Add(Ui.Dock(buttons, Dock.Bottom));
+
+        UIElement detail;
+        if (request.Text is { } message)
+            detail = new TextBlock
+            {
+                Text = message,
+                FontFamily = Fonts.Ui,
+                FontSize = 12,
+                LineHeight = 16,
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                MaxHeight = 32,
+                Foreground = Palette.Secondary,
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+        else
+        {
+            var size = Ui.Dock(Ui.Text(TransferStats.Size(request.Total), 13, Palette.Secondary), Dock.Right);
+            size.Margin = new Thickness(12, 0, 0, 0);
+            Children.Add(size);
+            detail = new MiddleText(request.Label, 11, Palette.Secondary) { HorizontalAlignment = HorizontalAlignment.Left };
+        }
+        var titles = Ui.Column(text ? 4 : 2,
+            Ui.Text(text ? $"{request.Alias} 发来一段文字" : $"{request.Alias} 想发送", 13, Palette.Text, FontWeights.Medium),
+            detail);
         titles.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(titles);
         VerticalAlignment = VerticalAlignment.Top;

@@ -35,12 +35,13 @@ sealed class CoreTransfers(Core core) : ITransfers
 /// the same events as the core, on timers.
 sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
 {
-    public enum Outcome { Success, Busy, Failure }
+    public enum Outcome { Success, Busy, Failure, Declined }
 
     public static string Title(Outcome outcome) => outcome switch
     {
         Outcome.Success => "成功",
         Outcome.Busy => "对方忙（排队）",
+        Outcome.Declined => "LocalSend 设备拒绝",
         _ => "失败",
     };
 
@@ -70,6 +71,22 @@ sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
         const long total = 24_000_000;
         void Run(double seconds, double? failAt) =>
             Progress(id, true, device, total, seconds, failAt, files.Count, []);
+        // A LocalSend device's user accepts first, or declines.
+        if (device.LocalSend)
+        {
+            After(id, 0.05, () => emit(new TransferWaiting(id, device.Id, device.Name)));
+            After(id, 2.5, () =>
+            {
+                if (outcome != Outcome.Declined)
+                    Run(2.4, outcome == Outcome.Failure ? 0.42 : null);
+                else
+                {
+                    timers.Remove(id);
+                    emit(new TransferFinished(id, true, device.Id, device.Name, "declined", 0, 0, [], $"{device.Name} 拒绝了接收"));
+                }
+            });
+            return id;
+        }
         switch (outcome)
         {
             case Outcome.Success:

@@ -60,6 +60,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
     {
         model.PhaseChanged += PhaseChanged;
         model.PairAnswered += AnswerPair;
+        model.ReceiveAnswered += AnswerReceive;
         model.Sounded += Sounds.Play;
         BuildWindows();
         SystemEvents.DisplaySettingsChanged += (_, _) =>
@@ -176,6 +177,8 @@ sealed class AppController(Options options) : IDragTarget, ISession
         {
             if (core.Command("devices.list") is JsonArray list)
                 model.Devices = list.OfType<JsonNode>().Select(Device.FromCore).ToList();
+            if (core.Command("localsend.list") is JsonArray localSend)
+                model.LocalSendDevices = localSend.OfType<JsonNode>().Select(Device.FromCore).ToList();
             DevicesChanged?.Invoke();
         }
         catch (CoreException e)
@@ -199,6 +202,25 @@ sealed class AppController(Options options) : IDragTarget, ISession
         return downloads is not null && dir.StartsWith(downloads, StringComparison.OrdinalIgnoreCase)
             ? "下载" + dir[downloads.Length..]
             : dir;
+    }
+
+    /// A LocalSend device's request. Accepted files come in as a receive; in
+    /// `--fake`, a simulated one.
+    void AnswerReceive(string requestId, bool accept)
+    {
+        if (core is null)
+        {
+            if (accept && requestId == "fake-files") model.Fake.Receive(Device.LocalSendSamples[0]);
+            return;
+        }
+        try
+        {
+            core.Command("receive.respond", new JsonObject { ["requestId"] = requestId, ["accept"] = accept });
+        }
+        catch (CoreException e)
+        {
+            model.ShowNotice(e.Message, success: false);
+        }
     }
 
     void AnswerPair(string pairId, bool accept)
@@ -331,6 +353,15 @@ sealed class AppController(Options options) : IDragTarget, ISession
             model.Fake.Receive(model.Devices.FirstOrDefault(d => d.Id == "air") ?? Device.Samples[1]);
         }),
         new("模拟配对请求", Glyphs.Link, () => model.ShowPairRequest("fake", "MacBook Air", "482019")),
+        new("LocalSend", Glyphs.Phone, Submenu: () =>
+        [
+            new("在线设备", Action: () => model.LocalSendDevices = model.LocalSendDevices.Count == 0 ? Device.LocalSendSamples : [],
+                Checked: model.LocalSendDevices.Count > 0),
+            new("模拟发来文件", Action: () => model.Handle(new ReceiveRequest(
+                "fake-files", "pixel", "Pixel 8", "mobile", "IMG_0001.jpg 等 3 个文件", 3, 8_400_000, null))),
+            new("模拟发来文字", Action: () => model.Handle(new ReceiveRequest(
+                "fake-text", "pixel", "Pixel 8", "mobile", "一段文字", 1, 0, Demo.SampleText))),
+        ]),
         SoundsEntry(),
         MenuEntry.Separator,
         new("退出", Glyphs.Power, Quit),
@@ -419,9 +450,10 @@ sealed class AppController(Options options) : IDragTarget, ISession
     void PhaseChanged(Phase phase)
     {
         Log.Write($"phase {phase.Describe()}");
-        if (tray is not null) tray.Waiting = phase is Phase.Queued;
+        if (tray is not null) tray.Waiting = phase is Phase.Queued or Phase.AwaitingAcceptance;
         // What other devices start shows on the primary screen.
-        if (phase is Phase.Receiving or Phase.PairRequest && lastPhase is Phase.Idle && windows.Count > 0) Activate(Home);
+        if (phase is Phase.Receiving or Phase.PairRequest or Phase.ReceiveRequest && lastPhase is Phase.Idle && windows.Count > 0)
+            Activate(Home);
         lastPhase = phase;
         returnHome.Stop();
         if (phase is Phase.Idle) returnHome.Start();

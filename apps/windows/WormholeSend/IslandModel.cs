@@ -14,11 +14,14 @@ sealed class IslandModel : INotifyPropertyChanged
     public event Action<Phase>? PhaseChanged;
     /// The user answered a pairing request on the island: pair ID, accept.
     public event Action<string, bool>? PairAnswered;
+    /// The user answered a LocalSend device's request: request ID, accept.
+    public event Action<string, bool>? ReceiveAnswered;
     /// A moment that sounds (Sounds.cs).
     public event Action<Sound>? Sounded;
 
     Phase phase = new Phase.Idle();
     IReadOnlyList<Device> devices = Device.Samples;
+    IReadOnlyList<Device> localSend = [];
     string dragLabel = "";
     Transfer? transfer;
     double progress;
@@ -45,6 +48,8 @@ sealed class IslandModel : INotifyPropertyChanged
     Incoming? receive;
     /// A pairing request that arrived while the island was busy.
     Phase.PairRequest? pendingPair;
+    /// A LocalSend device's request that arrived while the island was busy.
+    Phase.ReceiveRequest? pendingRequest;
 
     sealed class Incoming(string id, Transfer transfer)
     {
@@ -74,7 +79,25 @@ sealed class IslandModel : INotifyPropertyChanged
         }
     }
 
+    /// The paired devices, default first.
     public IReadOnlyList<Device> Devices { get => devices; set => Set(ref devices, value); }
+    /// LocalSend devices online: they can be sent to, after the paired ones.
+    public IReadOnlyList<Device> LocalSendDevices { get => localSend; set => Set(ref localSend, value); }
+    /// What a drag can go to: the paired devices, then the LocalSend ones.
+    public IReadOnlyList<Device> Targets => [.. devices, .. localSend];
+    /// Copies a text message to the clipboard; a test sets its own.
+    public Func<string, bool> CopyText { get; set; } = text =>
+    {
+        try
+        {
+            Clipboard.SetText(text);
+            return true;
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            return false;
+        }
+    };
     public string DragLabel { get => dragLabel; set => Set(ref dragLabel, value); }
     public Transfer? Transfer { get => transfer; set => Set(ref transfer, value); }
     /// Progress of the transfer on screen, 0 to 1.
@@ -109,10 +132,11 @@ sealed class IslandModel : INotifyPropertyChanged
     }
 
     public Device? DefaultDevice => devices.FirstOrDefault(d => d.IsDefault);
-    public IEnumerable<Device> OnlineDevices => devices.Where(Available);
-    /// A send is on its way (queued included): drags are ignored meanwhile,
-    /// one send at a time. So are they while a pairing request shows.
-    public bool IsBusy => phase is Phase.Sending or Phase.Queued or Phase.PairRequest or Phase.PairWaiting;
+    /// A send is on its way (queued, or waiting for a LocalSend user, too):
+    /// drags are ignored meanwhile, one send at a time. So are they while a
+    /// pairing request or a LocalSend device's request shows.
+    public bool IsBusy => phase is Phase.Sending or Phase.Queued or Phase.AwaitingAcceptance
+        or Phase.PairRequest or Phase.PairWaiting or Phase.ReceiveRequest;
     public bool CanDrop => phase is Phase.Target or Phase.Picker;
 
     static bool Available(Device device) => device.Online && !device.NeedsRepair;
@@ -162,12 +186,13 @@ sealed class IslandModel : INotifyPropertyChanged
             else if (armedForPicker)
                 Phase = new Phase.Picker(null);
         }
-        if (phase is Phase.Picker && devices.Count > 1)
+        var targets = Targets;
+        if (phase is Phase.Picker && targets.Count > 1)
         {
             body = IslandRect(panelWidth);
-            var columnWidth = (body.Width - 28) / devices.Count;
+            var columnWidth = (body.Width - 28) / targets.Count;
             var index = (int)Math.Floor((point.X - body.Left - 14) / columnWidth);
-            Phase = new Phase.Picker(Math.Clamp(index, 0, devices.Count - 1));
+            Phase = new Phase.Picker(Math.Clamp(index, 0, targets.Count - 1));
         }
     }
 
@@ -199,13 +224,14 @@ sealed class IslandModel : INotifyPropertyChanged
                 Send(files, target);
                 return true;
             case Phase.Picker(var hot):
-                int? index = devices.Count == 1 ? 0 : hot;
-                if (index is not { } i)
+                var targets = Targets;
+                int? index = targets.Count == 1 ? 0 : hot;
+                if (index is not { } i || i >= targets.Count)
                 {
                     Phase = new Phase.Idle();
                     return false;
                 }
-                var device = devices[i];
+                var device = targets[i];
                 if (!Available(device))
                 {
                     Refuse(device);
@@ -220,13 +246,14 @@ sealed class IslandModel : INotifyPropertyChanged
 
     void EnterIsland()
     {
+        var targets = Targets;
         if (dragNotFiles)
             Phase = new Phase.Unavailable("只能发送文件");
-        else if (devices.Count == 0)
+        else if (targets.Count == 0)
             Phase = new Phase.Unavailable("还没有配对设备 · 点击配对");
-        else if (!OnlineDevices.Any())
-            Phase = new Phase.Unavailable(devices.Count == 1 ? $"{devices[0].Name} 离线，无法发送" : "没有在线的设备");
-        else if (devices.Count == 1)
+        else if (!targets.Any(Available))
+            Phase = new Phase.Unavailable(targets.Count == 1 ? $"{targets[0].Name} 离线，无法发送" : "没有在线的设备");
+        else if (targets.Count == 1)
             Phase = new Phase.Picker(0);
         else if (DefaultDevice is { } device && Available(device))
         {
@@ -249,8 +276,8 @@ sealed class IslandModel : INotifyPropertyChanged
     {
         get
         {
-            if (devices.Count == 0) return "还没有配对设备";
-            if (devices.Count == 1 && !Available(devices[0])) return $"{devices[0].Name} 离线，无法发送";
+            if (devices.Count == 0) return localSend.Count == 0 ? "还没有配对设备" : "移到这里选择设备";
+            if (devices.Count == 1 && !Available(devices[0]) && localSend.Count == 0) return $"{devices[0].Name} 离线，无法发送";
             if (DefaultDevice is { } device && Available(device)) return $"移到这里发送到 {device.Name}";
             return "默认设备离线，移到这里选其他设备";
         }
@@ -335,6 +362,10 @@ sealed class IslandModel : INotifyPropertyChanged
                 }
                 Phase = new Phase.Queued(queued.Position);
                 break;
+            case TransferWaiting waiting when waiting.Id == sendId:
+                CancelTimers();
+                Phase = new Phase.AwaitingAcceptance(waiting.Alias);
+                break;
             case TransferStarted { Sending: true } started when started.Id == sendId:
                 CancelTimers();
                 Progress = 0;
@@ -372,6 +403,19 @@ sealed class IslandModel : INotifyPropertyChanged
             case ReceiveWaiting waiting:
                 WaitingCount = waiting.Count;
                 break;
+            case DeviceUpdated { LocalSend: true } updated:
+                var others = localSend.Where(d => d.Id != updated.Id);
+                LocalSendDevices = updated.Online
+                    ? [.. others, new Device(updated.Id, updated.Alias, Device.GlyphFor(updated.DeviceType), Online: true, IsDefault: false, LocalSend: true)]
+                    : [.. others];
+                break;
+            case ReceiveRequest request:
+                ShowReceiveRequest(new Phase.ReceiveRequest(request.RequestId, request.Alias, request.Label, request.Total, request.Text));
+                break;
+            case ReceiveClosed closed:
+                if (pendingRequest?.RequestId == closed.RequestId) pendingRequest = null;
+                if (phase is Phase.ReceiveRequest shown && shown.RequestId == closed.RequestId) Phase = new Phase.Idle();
+                break;
             case DeviceUpdated updated when devices.Any(d => d.Id == updated.Id):
                 Devices = devices.Select(d => d.Id == updated.Id ? d with { Name = updated.Alias, Online = updated.Online } : d).ToList();
                 break;
@@ -391,7 +435,7 @@ sealed class IslandModel : INotifyPropertyChanged
                 Schedule(Spec.DoneHold, () => Phase = new Phase.Idle());
                 break;
             case "cancelled":
-                if (phase is Phase.Sending or Phase.Queued) Phase = new Phase.Idle();
+                if (phase is Phase.Sending or Phase.Queued or Phase.AwaitingAcceptance) Phase = new Phase.Idle();
                 break;
             default:
                 Fail(finished.Status switch
@@ -478,13 +522,18 @@ sealed class IslandModel : INotifyPropertyChanged
         if (transfer is { Files.Count: > 0 } received) Shell.Reveal(received.Files);
     }
 
-    /// Once the island is idle: a pairing request first, then a transfer
-    /// that came in meanwhile.
+    /// Once the island is idle: a pairing request first, then a LocalSend
+    /// device's request, then a transfer that came in meanwhile.
     void ShowPending()
     {
-        if (pendingPair is { } request)
+        if (pendingPair is { } pair)
         {
             pendingPair = null;
+            Phase = pair;
+        }
+        else if (pendingRequest is { } request)
+        {
+            pendingRequest = null;
             Phase = request;
         }
         else if (receive is not null)
@@ -524,6 +573,53 @@ sealed class IslandModel : INotifyPropertyChanged
             Phase = new Phase.Idle();
         else
             ShowNotice($"配对失败：{reason ?? "未知原因"}", success: false);
+    }
+
+    // MARK: - LocalSend requests
+
+    /// A LocalSend device asks to send; it shows when nothing else does, as
+    /// a pairing request, and is declined after a minute without an answer.
+    void ShowReceiveRequest(Phase.ReceiveRequest request)
+    {
+        Sounded?.Invoke(Sound.PairRequest);
+        if (CanShowReceive)
+        {
+            CancelTimers();
+            Phase = request;
+        }
+        else
+            pendingRequest = request;
+    }
+
+    /// Accepting files lets them come in as a receive; accepting a text
+    /// copies it, and the island says so with the start of the text.
+    public void AnswerReceive(bool accept)
+    {
+        if (phase is not Phase.ReceiveRequest request) return;
+        ReceiveAnswered?.Invoke(request.RequestId, accept);
+        if (!accept || request.Text is not { } text)
+        {
+            Phase = new Phase.Idle();
+            return;
+        }
+        var copied = CopyText(text);
+        CancelTimers();
+        Phase = copied
+            ? new Phase.Notice("已复制到剪贴板", Success: true, Preview(text))
+            : new Phase.Notice("无法写入剪贴板", Success: false);
+        Schedule(copied ? Spec.DoneHold : Spec.FailedHold, () =>
+        {
+            if (phase is Phase.Notice) Phase = new Phase.Idle();
+        });
+    }
+
+    /// The start of a text, on one line.
+    public static string Preview(string text)
+    {
+        var line = string.Join(" ", text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var starts = System.Globalization.StringInfo.ParseCombiningCharacters(line);
+        // About what fits beside "已复制到剪贴板".
+        return starts.Length <= 11 ? line : line[..starts[11]] + "…";
     }
 
     /// A short message, unless the user is busy with something else.
@@ -582,7 +678,8 @@ sealed class IslandModel : INotifyPropertyChanged
                 content = new Size(360, 92);
                 break;
             case Phase.Picker:
-                content = devices.Count == 1 ? new Size(380, 64) : new Size(Spec.PickerWidth, 122);
+                var count = Targets.Count;
+                content = count == 1 ? new Size(380, 64) : new Size(PickerWidth(count), 122);
                 break;
             case Phase.Unavailable:
                 content = new Size(300, 24);
@@ -593,7 +690,7 @@ sealed class IslandModel : INotifyPropertyChanged
             case Phase.Sending:
                 content = new Size(340, 56);
                 break;
-            case Phase.Queued:
+            case Phase.Queued or Phase.AwaitingAcceptance:
                 content = new Size(340, 40);
                 break;
             case Phase.Done or Phase.Failed or Phase.Refused or Phase.Notice or Phase.PairWaiting or Phase.Interrupted:
@@ -605,12 +702,24 @@ sealed class IslandModel : INotifyPropertyChanged
             case Phase.PairRequest:
                 content = new Size(380, 78);
                 break;
+            // A text message shows its first two lines.
+            case Phase.ReceiveRequest { Text: not null }:
+                content = new Size(380, 92);
+                break;
+            case Phase.ReceiveRequest:
+                content = new Size(380, 78);
+                break;
             default:
                 content = new Size(400, 76);
                 break;
         }
         return new Size(content.Width, content.Height + 24);
     }
+
+    /// The device list grows past its usual width from five devices on, up
+    /// to the window's.
+    static double PickerWidth(int count) =>
+        Math.Min(Spec.PanelSize.Width - 32, Math.Max(Spec.PickerWidth, 28 + 84 * count));
 
     /// The island body in window coordinates (origin top left).
     public Rect IslandRect(double panelWidth)

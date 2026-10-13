@@ -125,7 +125,7 @@ sealed class IslandView : Grid
     /// Changes when the content layout changes, not on every progress tick.
     string ContentKey(Phase phase, bool compact) => phase switch
     {
-        Phase.Picker => model.Devices.Count == 1 ? "single" : $"picker:{model.Devices.Count}",
+        Phase.Picker => model.Targets.Count == 1 ? "single" : $"picker:{string.Join(",", model.Targets.Select(d => d.Id))}",
         Phase.Queued => compact ? "queued-compact" : "queued",
         // The others' values (a reason, a name) are fixed for the phase.
         _ => phase.Describe(),

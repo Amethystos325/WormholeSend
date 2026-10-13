@@ -3,8 +3,10 @@ using System.Text.Json.Nodes;
 
 namespace WormholeSend;
 
-/// A paired device; `Id` is its certificate fingerprint.
-sealed record Device(string Id, string Name, string Glyph, bool Online, bool IsDefault, bool NeedsRepair = false)
+/// A paired device, or a LocalSend device (which can't pair; its user
+/// accepts every transfer); `Id` is its certificate fingerprint.
+sealed record Device(
+    string Id, string Name, string Glyph, bool Online, bool IsDefault, bool NeedsRepair = false, bool LocalSend = false)
 {
     /// Fake devices for the fake-data mode, demos and tests.
     public static readonly IReadOnlyList<Device> Samples =
@@ -14,6 +16,11 @@ sealed record Device(string Id, string Name, string Glyph, bool Online, bool IsD
         new("ipad", "iPad", Glyphs.Tablet, Online: false, IsDefault: false),
     ];
 
+    public static readonly IReadOnlyList<Device> LocalSendSamples =
+    [
+        new("pixel", "Pixel 8", Glyphs.Phone, Online: true, IsDefault: false, LocalSend: true),
+    ];
+
     /// An entry of the core's `devices.list`.
     public static Device FromCore(JsonNode node) => new(
         node["fingerprint"]!.GetValue<string>(),
@@ -21,7 +28,8 @@ sealed record Device(string Id, string Name, string Glyph, bool Online, bool IsD
         GlyphFor(node["deviceType"]?.GetValue<string>()),
         node["online"]?.GetValue<bool>() ?? false,
         node["isDefault"]?.GetValue<bool>() ?? false,
-        node["needsRepair"]?.GetValue<bool>() ?? false);
+        node["needsRepair"]?.GetValue<bool>() ?? false,
+        node["kind"]?.GetValue<string>() == "localsend");
 
     public static string GlyphFor(string? deviceType) => deviceType switch
     {
