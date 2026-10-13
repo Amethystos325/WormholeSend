@@ -133,6 +133,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
             Log.Write($"core started: {Core.Version}");
             SettingsSaved(startSettings);
             ReloadDevices();
+            LoadLocalSend();
             return null;
         }
         catch (Exception e) when (e is CoreException or DllNotFoundException or EntryPointNotFoundException)
@@ -181,13 +182,29 @@ sealed class AppController(Options options) : IDragTarget, ISession
         {
             if (core.Command("devices.list") is JsonArray list)
                 model.Devices = list.OfType<JsonNode>().Select(Device.FromCore).ToList();
-            if (core.Command("localsend.list") is JsonArray localSend)
-                model.LocalSendDevices = localSend.OfType<JsonNode>().Select(Device.FromCore).ToList();
             DevicesChanged?.Invoke();
         }
         catch (CoreException e)
         {
             Log.Write("devices.list: " + e.Message);
+        }
+    }
+
+    /// Once, at start: then device.updated keeps the list. localsend.list
+    /// also announces this device, and every LocalSend device answers each
+    /// announcement packet on a connection of its own, which it keeps open
+    /// for a minute; the transfer service takes 8 per address, so a send
+    /// right after an announcement could find no room.
+    void LoadLocalSend()
+    {
+        try
+        {
+            if (core?.Command("localsend.list") is JsonArray localSend)
+                model.LocalSendDevices = localSend.OfType<JsonNode>().Select(Device.FromCore).ToList();
+        }
+        catch (CoreException e)
+        {
+            Log.Write("localsend.list: " + e.Message);
         }
     }
 
