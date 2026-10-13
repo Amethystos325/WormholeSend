@@ -1,0 +1,32 @@
+<!-- Wormhole Send app icon: the tray icon's black hole (tray-icon.svg, same
+     geometry) on a deep-space plate, the accretion disk in warm light.
+     1024 canvas laid out like a macOS app icon: an 824 rounded square
+     inset by 100. make-icons.sh renders it for macOS (.icns) and, cropped
+     to the plate, for Windows (.ico). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="space" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1D1A2E"/>
+      <stop offset="1" stop-color="#07070B"/>
+    </linearGradient>
+    <linearGradient id="disk" gradientUnits="userSpaceOnUse" x1="-10.6" y1="0" x2="10.6" y2="0">
+      <stop offset="0" stop-color="#F2683C"/>
+      <stop offset="0.55" stop-color="#FFB547"/>
+      <stop offset="1" stop-color="#FFE3A3"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#space)"/>
+  <g transform="translate(512 512) scale(26) rotate(-22)" fill="none" stroke-linecap="round">
+    <mask id="ring-cut" maskUnits="userSpaceOnUse" x="-14" y="-14" width="28" height="28">
+      <rect x="-14" y="-14" width="28" height="28" fill="white"/>
+      <path d="M -10.6 0 A 10.6 4 0 0 0 10.6 0" stroke="black" stroke-width="4.4"/>
+    </mask>
+    <mask id="far-cut" maskUnits="userSpaceOnUse" x="-14" y="-14" width="28" height="28">
+      <rect x="-14" y="-14" width="28" height="28" fill="white"/>
+      <circle r="8.2" fill="black"/>
+    </mask>
+    <path d="M -10.6 0 A 10.6 4 0 0 1 10.6 0" stroke="url(#disk)" stroke-width="1.8" mask="url(#far-cut)"/>
+    <circle r="5" stroke="#F7F3EA" stroke-width="2" mask="url(#ring-cut)"/>
+    <path d="M -10.6 0 A 10.6 4 0 0 0 10.6 0" stroke="url(#disk)" stroke-width="1.8"/>
+  </g>
+</svg>

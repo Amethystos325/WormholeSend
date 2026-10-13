@@ -9,7 +9,7 @@ The notch panel on top of the Rust core: SwiftUI + AppKit, macOS 14+. The core i
 open "build/Wormhole Send.app"
 ```
 
-Building the core needs Rust. `scripts/build-core.sh --universal` produces arm64 + x86_64 (first run `rustup target add aarch64-apple-darwin x86_64-apple-darwin`).
+The app icon is `Resources/AppIcon.icns`, rendered from `assets/app-icon.svg` by `assets/make-icons.sh` (which also writes the Windows `assets/app-icon.ico`; it needs Google Chrome to rasterize the SVG). Building the core needs Rust. `scripts/build-core.sh --universal` produces arm64 + x86_64 (first run `rustup target add aarch64-apple-darwin x86_64-apple-darwin`).
 
 To test against `whs` on the same Mac, give the app its own data directory and port: `"build/Wormhole Send.app/Contents/MacOS/WormholeSend" --home /tmp/app --port 53340 --log`.
 
