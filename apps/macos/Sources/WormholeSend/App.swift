@@ -399,9 +399,39 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(sounds)
             menu.addItem(.separator())
         }
+        menu.addItem(languageMenu())
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: tr("退出", "Quit", "終了"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.image = icon("power")
         menu.addItem(quit)
+    }
+
+    /// 跟随系统, then each language in its own name, as on Windows.
+    private func languageMenu() -> NSMenuItem {
+        let item = NSMenuItem(title: tr("语言", "Language", "言語"), action: nil, keyEquivalent: "")
+        item.image = icon("globe")
+        let languages = NSMenu()
+        let system = Language.system.name
+        let choices: [(Language?, String)] = [(nil, tr("跟随系统（\(system)）", "System (\(system))", "システム（\(system)）"))]
+            + [Language.en, .zh, .ja].map { ($0, $0.name) }
+        for (language, title) in choices {
+            let choice = NSMenuItem(title: title, action: #selector(chooseLanguage(_:)), keyEquivalent: "")
+            choice.target = self
+            choice.representedObject = language?.rawValue
+            choice.state = language == Language.choice ? .on : .off
+            languages.addItem(choice)
+        }
+        item.submenu = languages
+        return item
+    }
+
+    /// Switches at once: the island and the menus from now on, and the
+    /// core's messages.
+    @objc private func chooseLanguage(_ sender: NSMenuItem) {
+        Language.choose((sender.representedObject as? String).flatMap(Language.init(rawValue:)))
+        core?.call("language.set", ["language": Language.current.rawValue])
+        model.language = Language.current
+        log("language \(Language.current.rawValue)")
     }
 
     /// Online devices that are not paired. Asking also announces this device.

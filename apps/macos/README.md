@@ -17,7 +17,7 @@ To test against `whs` on the same Mac, give the app its own data directory and p
 
 You can also open this directory in Xcode (it's a Swift Package) and run it from there.
 
-Menu bar icon (a black hole: a ring with its accretion disk tilted across it, `Sources/WormholeSend/StatusIcon.swift`, source `assets/tray-icon.svg`): paired devices (set as default, unpair), pair a new device (nearby devices), open the receive folder (its path shows below on macOS 14.4+), change the receive folder, sounds on or off. Every row has an SF Symbol.
+Menu bar icon (a black hole: a ring with its accretion disk tilted across it, `Sources/WormholeSend/StatusIcon.swift`, source `assets/tray-icon.svg`): paired devices (set as default, unpair), pair a new device (nearby devices), open the receive folder (its path shows below on macOS 14.4+), change the receive folder, sounds on or off, language. Every row has an SF Symbol.
 
 Sounds (design doc 2.5) are the app's own files, the same as on Windows: `assets/sounds/*.wav`, synthesized by `make-sounds.py` and copied into the bundle by `scripts/bundle.sh`. `sent.wav` when files are delivered, `received.wav` when files are received, `failed.wav` when a send fails or a receive breaks off, `pair-request.wav` for a pairing request; played at 60% volume.
 
@@ -25,7 +25,7 @@ The first launch shows a welcome that explains the Local Network prompt macOS 15
 
 ## Languages
 
-English, Chinese and Japanese, the same as the core and the Windows app. macOS picks the language from the user's preferred languages among the bundle's `en`, `zh-Hans` and `ja` folders (`Resources/*.lproj`, which also hold the Local Network prompt's text). A single app can be given another language in System Settings › General › Language & Region › Applications. The core is started in the same language (`language` in the `wh_start` config), so its messages match. Every string has all three versions at the call site: `tr("中文", "English", "日本語")` (`L10n.swift`). One-line states widen to fit their text, up to 528 pt.
+English, Chinese and Japanese, the same as the core and the Windows app. By default macOS picks the language from the user's preferred languages among the bundle's `en`, `zh-Hans` and `ja` folders (`Resources/*.lproj`, which also hold the Local Network prompt's text). The menu's 语言 item (跟随系统 / English / 简体中文 / 日本語, as on Windows) switches at once. It saves the choice as the app's `AppleLanguages`, the same setting as System Settings › General › Language & Region › Applications, so the two agree and macOS's own dialogs follow from the next launch. The core is started in the same language (`language` in the `wh_start` config), so its messages match. Every string has all three versions at the call site: `tr("中文", "English", "日本語")` (`L10n.swift`). One-line states widen to fit their text, up to 528 pt.
 
 To check another language, add `-AppleLanguages "(ja)"` (or `en`, `zh-Hans`) to the launch arguments, e.g. with `--demo`.
 
@@ -57,6 +57,7 @@ States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `u
 - [ ] Menu bar → a paired device → "解除配对": the other side is notified
 - [ ] Menu bar → "更改接收文件夹…" → pick a folder: the next files received land there; during a transfer it is refused with a message
 - [ ] Menu bar → "提示音" off: no sounds; on again: a sample plays
+- [ ] Menu bar → "语言" → 日本語: the menu and the island switch at once, and a failed send's reason from the core is in Japanese too; after a restart it is still Japanese; "跟随系统" goes back
 - [ ] First launch: the welcome comes before the system's Local Network prompt; after "允许" the menu shows no warning
 - [ ] Turn Wormhole Send off in System Settings › Privacy & Security › Local Network and restart the app: the icon gets an amber dot, the menu says "没有本地网络权限" and "打开“本地网络”设置…" opens that page; turning it back on clears the warning the next time the menu opens
 - [ ] LocalSend on a phone sends photos to this Mac: the island asks "… 想发送 IMG_… 等 N 个文件 · 大小" (pair-request.wav plays); 接收 shows the progress, then the files; 拒绝 tells the phone it was declined

@@ -71,6 +71,8 @@ final class IslandModel {
     }
     /// Paired devices waiting to send to this one.
     var waitingCount = 0
+    /// Changes with the language menu, so the island redraws in the new one.
+    var language = Language.current
 
     @ObservationIgnored var core: Core?
     @ObservationIgnored var onPhaseChange: ((Phase) -> Void)?

@@ -21,6 +21,8 @@ struct IslandView: View {
                 .padding(.top, mode.topOffset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Its texts come from `tr`, which SwiftUI doesn't watch.
+        .id(model.language)
         .animation(Spec.spring, value: model.phase)
         .animation(Spec.spring, value: model.queueCollapsed)
     }
