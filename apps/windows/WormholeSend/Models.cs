@@ -1,21 +1,40 @@
 using System.IO;
+using System.Text.Json.Nodes;
 
 namespace WormholeSend;
 
-/// A paired device. Fake data for now; the Rust core provides the real list.
-sealed record Device(string Id, string Name, string Glyph, bool Online, bool IsDefault)
+/// A paired device; `Id` is its certificate fingerprint.
+sealed record Device(string Id, string Name, string Glyph, bool Online, bool IsDefault, bool NeedsRepair = false)
 {
+    /// Fake devices for the fake-data mode, demos and tests.
     public static readonly IReadOnlyList<Device> Samples =
     [
         new("desk", "书房台式机", Glyphs.Desktop, Online: true, IsDefault: true),
         new("air", "MacBook Air", Glyphs.Laptop, Online: true, IsDefault: false),
         new("ipad", "iPad", Glyphs.Tablet, Online: false, IsDefault: false),
     ];
+
+    /// An entry of the core's `devices.list`.
+    public static Device FromCore(JsonNode node) => new(
+        node["fingerprint"]!.GetValue<string>(),
+        node["alias"]?.GetValue<string>() ?? "",
+        GlyphFor(node["deviceType"]?.GetValue<string>()),
+        node["online"]?.GetValue<bool>() ?? false,
+        node["isDefault"]?.GetValue<bool>() ?? false,
+        node["needsRepair"]?.GetValue<bool>() ?? false);
+
+    public static string GlyphFor(string? deviceType) => deviceType switch
+    {
+        "mobile" => Glyphs.Phone,
+        _ => Glyphs.Desktop,
+    };
 }
 
-sealed record Transfer(Device Device, IReadOnlyList<string> Files, string Label)
+/// A transfer the island shows. `Files` are the dropped files for a send,
+/// and the saved files and folders once a receive is done.
+sealed record Transfer(Device Device, IReadOnlyList<string> Files, string Label, int FileCount)
 {
-    public int FileCount => Files.Count;
+    public Transfer(Device device, IReadOnlyList<string> files, string label) : this(device, files, label, files.Count) { }
 }
 
 static class FileLabel

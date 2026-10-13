@@ -2,7 +2,7 @@
 
 局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
 
-当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）待做。
+当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）中 Windows 端已接入：顶部岛、托盘菜单、设置、配对和首次引导都走真实核心。
 
 | 目录 | 内容 |
 | --- | --- |
@@ -10,7 +10,7 @@
 | `core-ffi/` | 核心的 C 接口（`wormhole.dll` / `libwormhole.a` + `include/wormhole.h`），供两端原生界面调用，见 [core-ffi/README.md](core-ffi/README.md) |
 | `cli/` | 命令行 `whs`，用来在原生界面之前验证核心 |
 | `apps/macos/` | macOS 刘海面板验证原型（假数据） |
-| `apps/windows/` | Windows 顶部岛验证原型（WPF，假数据） |
+| `apps/windows/` | Windows 应用（WPF）：顶部岛、托盘、设置、配对、首次引导，接入核心 |
 
 ## 构建
 
@@ -51,8 +51,8 @@
 
 ## 与设计相比还没做的
 
-- 两端原生界面还没接入核心（C 接口 `core-ffi` 已就绪），刘海面板和顶部岛目前用假数据。
-- 设置窗口、首次引导、开机启动、安装包（Windows 安装包要放行 TCP 53320、TCP 53321 和 UDP 53320）。
+- macOS 刘海面板接入核心，以及 macOS 的设置、配对界面。
+- Windows 端：安装包（MSIX 还是 Inno Setup 待定）、私钥存入 DPAPI、双屏和 150% 缩放的实机验证，见 [apps/windows](apps/windows/README.md)。
 
 ## 致谢
 

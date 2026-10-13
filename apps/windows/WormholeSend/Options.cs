@@ -4,18 +4,28 @@ using System.Windows.Threading;
 
 namespace WormholeSend;
 
-/// Command line, for checks and screenshots:
+/// Command line:
 ///
+///     WormholeSend [--home DIR] [--port N] [--log]
+///     WormholeSend --fake [--log]
 ///     WormholeSend --demo picker [--screen external|N] [--devices 1] [--log] [--snapshot out.png]
 ///     WormholeSend --selftest --log
 ///
-/// Phases as in the macOS app: hint, target, picker, picker-offline,
-/// single, unavailable, sending, queued, queued-compact, done, failed,
-/// refused, receiving, received. `--snapshot` captures the island's window
-/// from the screen once the animation settled, then quits. `--selftest`
-/// runs the drag checks in SelfTest.cs and exits with their result.
-sealed record Options(string? Demo, string? Screen, int? Devices, bool Log, string? Snapshot, bool SelfTest)
+/// `--home` and `--port` run a second device on the same PC, as with `whs`.
+/// `--fake` uses simulated devices and transfers, switched from the tray
+/// menu, without the core. `--demo` freezes one phase, as in the macOS
+/// app: hint, target, picker, picker-offline, single, unavailable, sending,
+/// queued, queued-compact, done, failed, refused, receiving, received,
+/// pair-request, notice. `--snapshot` captures the island's window from the
+/// screen once the animation settled, then quits. `--selftest` runs the
+/// drag checks in SelfTest.cs and exits with their result.
+sealed record Options(
+    string? Demo, string? Screen, int? Devices, bool Log, string? Snapshot, bool SelfTest,
+    bool FakeData, string? Home, int? Port)
 {
+    /// Simulated devices and transfers instead of the core.
+    public bool Fake => FakeData || Demo is not null || SelfTest;
+
     public static Options Parse(string[] args)
     {
         string? Value(string flag)
@@ -29,7 +39,10 @@ sealed record Options(string? Demo, string? Screen, int? Devices, bool Log, stri
             int.TryParse(Value("--devices"), out var count) ? count : null,
             args.Contains("--log"),
             Value("--snapshot") is { } path ? Path.GetFullPath(path) : null,
-            args.Contains("--selftest"));
+            args.Contains("--selftest"),
+            args.Contains("--fake"),
+            Value("--home") is { } home ? Path.GetFullPath(home) : null,
+            int.TryParse(Value("--port"), out var port) ? port : null);
     }
 }
 
@@ -37,13 +50,14 @@ static class Log
 {
     static TextWriter? writer;
 
-    /// `--log` prints every phase change to stderr. A GUI app gets no
-    /// console of its own; use the parent's when stderr isn't redirected.
+    /// `--log` prints every phase change and core event to stderr. A GUI
+    /// app gets no console of its own; use the parent's when stderr isn't
+    /// redirected.
     public static void Enable()
     {
         var handle = Native.GetStdHandle(Native.STD_ERROR_HANDLE);
         if (handle == IntPtr.Zero || handle == new IntPtr(-1)) Native.AttachConsole(Native.ATTACH_PARENT_PROCESS);
-        writer = new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true };
+        writer = TextWriter.Synchronized(new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true });
     }
 
     public static void Write(string line) => writer?.WriteLine(line);
@@ -103,8 +117,11 @@ static class Demo
                     var received = DemoFiles.Make();
                     model.Transfer = new Transfer(Device.Samples[1], received, FileLabel.Of(received));
                     model.Progress = name == "receiving" ? 0.62 : 1;
+                    model.WaitingCount = name == "receiving" ? 1 : 0;
                     model.Phase = name == "receiving" ? new Phase.Receiving() : new Phase.Received();
                     break;
+                case "pair-request": model.Phase = new Phase.PairRequest("demo", "MacBook Air", "482019"); break;
+                case "notice": model.Phase = new Phase.Notice("已与 MacBook Air 配对", Success: true); break;
                 default:
                     Log.Write($"Unknown demo phase: {name}");
                     break;

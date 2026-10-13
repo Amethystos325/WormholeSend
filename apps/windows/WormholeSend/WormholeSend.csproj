@@ -11,7 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>WormholeSend</AssemblyName>
     <Product>Wormhole Send</Product>
-    <!-- For the source-generated P/Invoke in Native.cs. -->
+    <!-- For the source-generated P/Invoke in Native.cs and Core.cs. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- WinForms would rather set DPI awareness in code, but this is a WPF
          app: the manifest is the place for it. -->
@@ -27,6 +27,26 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="WormholeSend.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <!-- The Rust core (core-ffi) is built with cargo and copied next to the
+       app. SkipCoreBuild=true uses the wormhole.dll already built. -->
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\'))</RepoRoot>
+    <CargoExe Condition="Exists('$(USERPROFILE)\.cargo\bin\cargo.exe')">$(USERPROFILE)\.cargo\bin\cargo.exe</CargoExe>
+    <CargoExe Condition="'$(CargoExe)' == ''">cargo</CargoExe>
+  </PropertyGroup>
+
+  <Target Name="BuildCore" BeforeTargets="BeforeBuild" Condition="'$(SkipCoreBuild)' != 'true'">
+    <Exec Command="&quot;$(CargoExe)&quot; build -p wormhole-ffi --release" WorkingDirectory="$(RepoRoot)" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(RepoRoot)target\release\wormhole.dll" Link="wormhole.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
 </Project>

@@ -4,30 +4,25 @@ using Forms = System.Windows.Forms;
 
 namespace WormholeSend;
 
-/// The tray icon. Its menu holds switches for the fake data while the core
-/// is not connected yet, like the macOS menu bar item. While a send waits in
-/// the receiver's queue the icon carries an orange dot (design doc 2.1).
+/// The tray icon. The menu is built by the owner each time it opens. While
+/// a send waits in the receiver's queue the icon carries an orange dot
+/// (design doc 2.1).
 sealed class TrayIcon : IDisposable
 {
     const string Glyph = "";
 
-    readonly IslandModel model;
-    readonly Action simulateReceive;
-    readonly Action quit;
     readonly Forms.NotifyIcon icon;
     readonly Forms.ContextMenuStrip menu = new();
     bool waiting;
 
-    public TrayIcon(IslandModel model, Action simulateReceive, Action quit)
+    public TrayIcon(Action<Forms.ToolStripItemCollection> buildMenu, Action? open)
     {
-        this.model = model;
-        this.simulateReceive = simulateReceive;
-        this.quit = quit;
-        Build();
+        buildMenu(menu.Items);
         // Rebuilt on every open so the check marks are current.
         menu.Opening += (_, e) =>
         {
-            Build();
+            menu.Items.Clear();
+            buildMenu(menu.Items);
             e.Cancel = false;
         };
         icon = new Forms.NotifyIcon
@@ -37,64 +32,27 @@ sealed class TrayIcon : IDisposable
             Icon = Draw(badge: false),
             Visible = true,
         };
-        model.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(IslandModel.Phase)) UpdateBadge();
-        };
+        if (open is not null) icon.MouseDoubleClick += (_, _) => open();
     }
 
-    void UpdateBadge()
+    /// The waiting mark of a queued send.
+    public bool Waiting
     {
-        var queued = model.Phase is Phase.Queued;
-        if (queued == waiting) return;
-        waiting = queued;
-        var old = icon.Icon;
-        icon.Icon = Draw(queued);
-        old?.Dispose();
+        set
+        {
+            if (waiting == value) return;
+            waiting = value;
+            var old = icon.Icon;
+            icon.Icon = Draw(value);
+            old?.Dispose();
+        }
     }
 
-    void Build()
-    {
-        menu.Items.Clear();
-        menu.Items.Add(new Forms.ToolStripMenuItem("Wormhole Send · 顶部岛验证（假数据）") { Enabled = false });
-        menu.Items.Add(new Forms.ToolStripSeparator());
-
-        var devices = new Forms.ToolStripMenuItem("配对设备");
-        foreach (var count in new[] { 0, 1, 3 })
-        {
-            devices.DropDownItems.Add(new Forms.ToolStripMenuItem($"{count} 台", null, (_, _) =>
-                model.Devices = Device.Samples.Take(count).ToList())
-            { Checked = model.Devices.Count == count });
-        }
-        menu.Items.Add(devices);
-
-        menu.Items.Add(new Forms.ToolStripMenuItem("默认设备离线", null, (_, _) =>
-            model.Devices = model.Devices.Select(d => d.IsDefault ? d with { Online = !d.Online } : d).ToList())
-        {
-            Checked = model.DefaultDevice?.Online == false,
-            Enabled = model.DefaultDevice is not null,
-        });
-
-        var outcomes = new Forms.ToolStripMenuItem("发送结果");
-        foreach (var outcome in Enum.GetValues<IslandModel.SendOutcome>())
-        {
-            outcomes.DropDownItems.Add(new Forms.ToolStripMenuItem(IslandModel.Title(outcome), null, (_, _) =>
-                model.NextOutcome = outcome)
-            { Checked = model.NextOutcome == outcome });
-        }
-        menu.Items.Add(outcomes);
-
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(new Forms.ToolStripMenuItem("模拟接收文件", null, (_, _) => simulateReceive())
-        {
-            Enabled = model.Phase is Phase.Idle,
-        });
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(new Forms.ToolStripMenuItem("退出", null, (_, _) => quit()));
-    }
+    public void Notify(string title, string text) =>
+        icon.ShowBalloonTip(5000, title, text, Forms.ToolTipIcon.None);
 
     /// The icon is drawn from the icon font in the taskbar's text color, so
-    /// the spike needs no image files.
+    /// the app needs no image files.
     static Drawing.Icon Draw(bool badge)
     {
         var primary = ScreenInfo.All().FirstOrDefault(s => s.Primary);
@@ -149,4 +107,14 @@ sealed class TrayIcon : IDisposable
         icon.Dispose();
         menu.Dispose();
     }
+}
+
+static class Menu
+{
+    public static Forms.ToolStripMenuItem Item(string text, Action action, bool enabled = true, bool check = false) =>
+        new(text, null, (_, _) => action()) { Enabled = enabled, Checked = check };
+
+    public static Forms.ToolStripMenuItem Title(string text) => new(text) { Enabled = false };
+
+    public static Forms.ToolStripSeparator Separator() => new();
 }

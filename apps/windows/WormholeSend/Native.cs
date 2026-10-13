@@ -113,6 +113,24 @@ static partial class Native
     [LibraryImport("user32.dll", EntryPoint = "GetPropW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr GetProp(IntPtr hwnd, string name);
 
+    public static readonly Guid FOLDERID_Downloads = new("374DE290-123F-4565-9164-39C4925E467B");
+
+    [LibraryImport("shell32.dll")]
+    private static partial int SHGetKnownFolderPath(in Guid id, uint flags, IntPtr token, out IntPtr path);
+
+    public static string? KnownFolder(Guid id)
+    {
+        if (SHGetKnownFolderPath(id, 0, IntPtr.Zero, out var path) != 0) return null;
+        try
+        {
+            return Marshal.PtrToStringUni(path);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(path);
+        }
+    }
+
     public static bool IsPressed(int key) => (GetAsyncKeyState(key) & 0x8000) != 0;
 
     public static string ClassName(IntPtr hwnd)

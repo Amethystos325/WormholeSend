@@ -92,6 +92,7 @@ static class Glyphs
     public const string WarningFilled = "";   // exclamationmark.triangle.fill
     public const string CloseFilled = "";     // xmark.circle.fill
     public const string Document = "";        // doc.fill
+    public const string Folder = "";          // folder.fill
 }
 
 static class Fonts

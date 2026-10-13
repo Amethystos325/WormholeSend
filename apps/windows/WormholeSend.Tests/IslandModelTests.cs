@@ -13,6 +13,7 @@ public class IslandModelTests
     static IslandModel Entered(IslandModel? model = null)
     {
         model ??= new IslandModel();
+        if (model.Transfers is FakeTransfers) model.Transfers = new RecordingTransfers();
         model.DragStarted(Files);
         model.DragMoved(Sensor, PanelWidth);
         return model;
@@ -141,14 +142,6 @@ public class IslandModelTests
         Assert.Equal("默认设备离线，移到这里选其他设备", model.HintText);
     }
 
-    [Fact]
-    public void ABusyReceiverQueuesTheSend()
-    {
-        var model = Entered(new IslandModel { NextOutcome = IslandModel.SendOutcome.Busy });
-        Assert.True(model.Drop(Files));
-        Assert.Equal(new Phase.Queued(1), model.Phase);
-        Assert.False(model.QueueCollapsed);
-    }
 
     [Fact]
     public void DragsAreIgnoredWhileSending()

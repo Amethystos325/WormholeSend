@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -31,9 +32,14 @@ abstract class PhaseContent : DockPanel
         Phase.Done when model.Transfer is { } t =>
             new StatusLine(Glyphs.CheckFilled, Palette.Success, $"已送达 {t.Device.Name}", t.Label),
         Phase.Failed f => new FailedContent(f.Reason, model.Retry),
-        Phase.Refused r => new StatusLine(Glyphs.Blocked, Palette.Warning, $"{r.Name} 离线，未发送"),
+        Phase.Refused r => new StatusLine(Glyphs.Blocked, Palette.Warning, $"{r.Name} {r.Reason}，未发送"),
         Phase.Receiving when model.Transfer is { } t => new ReceivingContent(t),
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
+        Phase.PairRequest p => new PairRequestContent(p, model.AnswerPair),
+        Phase.PairWaiting p => new StatusLine(Glyphs.Clock, Palette.Secondary, $"等待 {p.Alias} 确认…"),
+        Phase.Notice { Success: true } n => new StatusLine(Glyphs.CheckFilled, Palette.Success, n.Text),
+        Phase.Notice n => new StatusLine(Glyphs.WarningFilled, Palette.Warning, n.Text),
+        Phase.Interrupted i => new StatusLine(Glyphs.WarningFilled, Palette.Warning, "传输中断", i.Reason),
         _ => new EmptyContent(),
     };
 }
@@ -173,7 +179,7 @@ sealed class DeviceTile : Border
         Child = column;
     }
 
-    string Status => (device.Online, device.IsDefault) switch
+    string Status => device.NeedsRepair ? "需重新配对" : (device.Online, device.IsDefault) switch
     {
         (true, true) => "在线 · 默认",
         (true, false) => "在线",
@@ -306,6 +312,7 @@ sealed class FailedContent : PhaseContent
 sealed class ReceivingContent : PhaseContent
 {
     readonly TextBlock percent = Ui.Percent();
+    readonly TextBlock detail = Ui.Text("", 11, Palette.Secondary);
     readonly ProgressLine bar = new(4, Palette.Accent);
 
     public ReceivingContent(Transfer transfer)
@@ -317,7 +324,7 @@ sealed class ReceivingContent : PhaseContent
         header.Children.Add(Ui.Dock(percent, Dock.Right));
         header.Children.Add(Ui.Column(2,
             Ui.Text($"{transfer.Device.Name} 发来 {transfer.FileCount} 个文件", 13, Palette.Text, FontWeights.Medium),
-            Ui.Text("已配对 · 自动保存到 下载\\Wormhole Send", 11, Palette.Secondary)));
+            detail));
         Children.Add(header);
         bar.Margin = new Thickness(0, 10, 0, 0);
         bar.VerticalAlignment = VerticalAlignment.Top;
@@ -328,6 +335,10 @@ sealed class ReceivingContent : PhaseContent
     {
         bar.Value = model.Progress;
         percent.Text = Ui.FormatPercent(model.Progress);
+        // Design doc 2.2: senders waiting in this device's queue.
+        detail.Text = model.WaitingCount > 0
+            ? $"还有 {model.WaitingCount} 个设备等待发送"
+            : $"已配对 · 自动保存到 {model.SaveDirLabel}";
     }
 }
 
@@ -347,11 +358,37 @@ sealed class ReceivedContent : PhaseContent
             chips.Children.Add(new FileChip(path) { Margin = new Thickness(index == 0 ? 0 : 6, 0, 0, 0) });
         if (transfer.Files.Count > 3)
         {
-            var more = Ui.Text($"等 {transfer.Files.Count} 个", 11, Palette.Secondary);
+            var more = Ui.Text($"等 {transfer.Files.Count} 项", 11, Palette.Secondary);
             more.Margin = new Thickness(6, 0, 0, 0);
             chips.Children.Add(more);
         }
         Children.Add(chips);
+    }
+}
+
+/// Another device asks to pair: both screens show the same code.
+sealed class PairRequestContent : PhaseContent
+{
+    public PairRequestContent(Phase.PairRequest request, Action<bool> answer)
+    {
+        var buttons = Ui.Row(8,
+            new PillButton("拒绝", () => answer(false)),
+            new PillButton("配对", () => answer(true), Palette.Accent));
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
+        buttons.Margin = new Thickness(0, 10, 0, 0);
+        Children.Add(Ui.Dock(buttons, Dock.Bottom));
+
+        var digits = request.Code.Length == 6 ? $"{request.Code[..3]} {request.Code[3..]}" : request.Code;
+        var code = Ui.Text(digits, 24, Palette.Text, FontWeights.SemiBold);
+        Typography.SetNumeralAlignment(code, FontNumeralAlignment.Tabular);
+        code.Margin = new Thickness(12, 0, 0, 0);
+        Children.Add(Ui.Dock(code, Dock.Right));
+        var titles = Ui.Column(2,
+            Ui.Text($"{request.Alias} 请求配对", 13, Palette.Text, FontWeights.Medium),
+            Ui.Text("两边显示的数字一致才配对", 11, Palette.Secondary));
+        titles.VerticalAlignment = VerticalAlignment.Center;
+        Children.Add(titles);
+        VerticalAlignment = VerticalAlignment.Top;
     }
 }
 
@@ -376,7 +413,8 @@ sealed class FileChip : Border
         Cursor = Cursors.Hand;
         var name = Ui.Text(System.IO.Path.GetFileName(path), 11, Palette.Text);
         name.MaxWidth = 96;
-        Child = Ui.Row(4, Ui.Icon(Glyphs.Document, 10, Palette.Text), name);
+        var glyph = System.IO.Directory.Exists(path) ? Glyphs.Folder : Glyphs.Document;
+        Child = Ui.Row(4, Ui.Icon(glyph, 10, Palette.Text), name);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

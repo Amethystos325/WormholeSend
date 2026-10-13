@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
@@ -174,6 +176,25 @@ class Pressable : Border
         Pressed = false;
         OnPressedChanged();
     }
+
+    public void Invoke() => Click?.Invoke();
+
+    /// A button to screen readers and UI Automation, named by its text or
+    /// its tooltip.
+    protected override AutomationPeer OnCreateAutomationPeer() => new PressablePeer(this);
+
+    sealed class PressablePeer(Pressable owner) : FrameworkElementAutomationPeer(owner), IInvokeProvider
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Button;
+
+        protected override string GetNameCore() =>
+            owner.Child is TextBlock { Text: var text } && !string.IsNullOrEmpty(text) ? text : owner.ToolTip as string ?? base.GetNameCore();
+
+        public override object? GetPattern(PatternInterface pattern) =>
+            pattern == PatternInterface.Invoke ? this : base.GetPattern(pattern);
+
+        public void Invoke() => owner.Invoke();
+    }
 }
 
 sealed class CancelButton : Pressable
@@ -191,17 +212,17 @@ sealed class CancelButton : Pressable
 
 sealed class PillButton : Pressable
 {
-    public PillButton(string title, Action action)
+    public PillButton(string title, Action action, Brush? fill = null)
     {
         Child = Ui.Text(title, 12, Palette.Text, FontWeights.SemiBold);
         Padding = new Thickness(12, 3, 12, 4);
         CornerRadius = new CornerRadius(999);
-        Background = Palette.Tile;
+        Background = fill ?? Palette.Tile;
         VerticalAlignment = VerticalAlignment.Center;
         Click += action;
     }
 
-    protected override void OnPressedChanged() => Background = Pressed ? Palette.TileHot : Palette.Tile;
+    protected override void OnPressedChanged() => Opacity = Pressed ? 0.7 : 1;
 }
 
 sealed class LinkButton : Pressable

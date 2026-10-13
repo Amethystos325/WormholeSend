@@ -1,52 +1,83 @@
-# Wormhole Send for Windows: top island check
+# Wormhole Send for Windows
 
-The third check from the design doc: the sensor along the top of each screen, drops, the device list, multiple monitors and DPI, and hiding under full-screen apps, with fake data and no Rust core connected. C# / WPF on .NET 10, Windows 10 and 11.
+The Windows app: the island at the top of the screen, the tray icon, settings, pairing and the first-run guide, on the Rust core through `core-ffi` (`wormhole.dll`). C# / WPF on .NET 10 with [WPF-UI](https://github.com/lepoco/wpfui) for the Fluent windows; Windows 10 and 11.
 
-It follows the macOS check (`apps/macos`) state for state: the phases, timings and sizes in `Phase.cs`, `IslandModel.cs` and `Spec.cs` are ports of `IslandModel.swift` and `Spec.swift`. Change both sides together.
+The island follows the macOS app state for state: the phases, timings and sizes in `Phase.cs`, `IslandModel.cs` and `Spec.cs` are ports of `IslandModel.swift` and `Spec.swift`. Change both sides together.
 
-## Running it
+## Building and running
 
-Install the [.NET 10 SDK](https://dotnet.microsoft.com/download), then:
+Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download), [Rust](https://rustup.rs) and Visual Studio Build Tools with "Desktop development with C++", and once `git config --global core.longpaths true` (see the top-level README). Then, from this directory:
 
 ```powershell
 dotnet run --project WormholeSend
 ```
 
-Or open `WormholeSend.slnx` in Visual Studio. The tray icon (an arrow to the top) switches the fake data: number of paired devices, default device offline, the result of the next send (success / receiver busy / failure), and a simulated receive.
+`dotnet build` builds the core with cargo first and copies `wormhole.dll` next to the app (`-p:SkipCoreBuild=true` skips cargo). Or open `WormholeSend.slnx` in Visual Studio.
+
+The first run shows a three-step guide (name, the firewall prompt, the first pairing) before the services start. When Windows asks about the firewall, allow private networks. Data lives in `%APPDATA%\WormholeSend`, shared with `whs`.
+
+## What's where
+
+| File | |
+| --- | --- |
+| `IslandModel.cs`, `Phase.cs` | The state machine: drags from the windows, core events, pairing requests |
+| `IslandView.cs`, `IslandContent.cs`, `Parts.cs` | The island and each phase's content, with the spring morphing |
+| `IslandWindow.cs`, `Screens.cs`, `DragWatch.cs` | One transparent topmost window per screen, the sensor, DPI, full-screen hiding |
+| `Core.cs`, `CoreEvents.cs`, `Transfers.cs` | P/Invoke to `wormhole.dll`, typed events, real and simulated transfers |
+| `AppController.cs`, `TrayIcon.cs` | Wiring: screens, core, tray menu (design doc 7.2), windows |
+| `SettingsWindow`, `PairWindow`, `WelcomeWindow` | Settings (7.1), pairing with the 6-digit code (3.1), first-run guide (7.3) |
 
 ## How it differs from macOS
 
 - Windows has no global drag events without hooks, so the island doesn't show when a drag starts. Each screen has a 240 × 6 sensor at the top center; dragging a file into it opens the island on that screen.
 - The sensor and the drop halo are painted at alpha 1/255: layered windows only take drags and clicks on pixels that are not fully transparent. The sensor therefore also takes clicks in its 240 × 6 area.
 - After a drag leaves the island the hint stays until the mouse button is released, which the app learns by polling the buttons (no drag events reach it then).
-- Full-screen apps (games, videos, slideshows, F11 browsers) hide the windows on their screen.
+- Full-screen apps hide the windows on their screen: what the shell reports as full screen (QUNS_BUSY, D3D, presentation mode) or a window without a title bar covering the monitor. Ordinary maximized windows don't.
 - Received files can be dragged out to Explorer or the desktop; they are copied, not moved.
+- Phases the macOS spike doesn't have yet: `pairRequest` (another device asks to pair; 380 × 78 content, the code on the right, 拒绝 / 配对), `pairWaiting` and `notice` (340 × 28 status lines). `interrupted(reason)` matches the macOS app.
+- While receiving, a new drag takes over the island; the receive shows again afterwards. A send shows before a receive (design doc 2.2).
+
+## Command line
+
+```powershell
+WormholeSend.exe [--home DIR] [--port N] [--log]     # a second device on one PC, as with whs
+WormholeSend.exe --fake [--log]                       # simulated devices and transfers, switched from the tray menu
+WormholeSend.exe --demo picker [--screen external|N] [--devices 1] [--snapshot out.png]
+WormholeSend.exe --selftest --log                     # drags through OLE, without the mouse
+```
+
+`--demo` freezes one state: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received` `pair-request` `notice`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints state changes and core events to stderr. Starting the app again opens the settings of the one running.
 
 ## Checks
 
 ```powershell
-dotnet test                                   # the state machine and the spring
-WormholeSend.exe --selftest --log             # drags through OLE, without the mouse
-WormholeSend.exe --demo picker [--screen external|N] [--devices 1] [--log] [--snapshot out.png]
+dotnet test       # the state machine, core events, and two real cores pairing and sending through P/Invoke
 ```
 
-`--selftest` calls the window's registered drop target the way `DoDragDrop` does and checks with `WindowFromPoint` which pixels take the pointer; it prints one line per check and exits with 0 when all pass. `--demo` freezes one state, as on macOS: `hint` `target` `picker` `picker-offline` `single` `unavailable` `sending` `queued` `queued-compact` `done` `failed` `refused` `receiving` `received`. `--snapshot` saves the window as it shows on screen and quits. `--log` prints every state change to stderr.
+`--selftest` calls the window's registered drop target the way `DoDragDrop` does and checks with `WindowFromPoint` which pixels take the pointer; it exits with 0 when all checks pass.
 
-Checked so far on one 4K screen at 225 %: every state with `--demo`, `--selftest`, real mouse drags from another process (drop via the device list, out and back, drop on an offline device), and hiding under borderless full-screen and borderless maximized windows but not under ordinary maximized ones. Not yet checked: a second monitor, 150 % scaling, monitors with different scaling.
+Checked so far on one 4K screen at 225 %: every state with `--demo`; `--selftest`; real mouse drags from another process (drop via the device list, out and back, drop on an offline device); hiding under borderless full-screen and borderless maximized windows but not under ordinary maximized ones; and, against `whs` through UI Automation, an incoming pairing answered on the island, receiving a folder, the unpair notice, and pairing from the pairing window. Not yet checked: a second monitor, 150 % scaling, monitors with different scaling, and a Mac on the other end.
+
+## Not done yet
+
+- Installer: MSIX or Inno Setup is still open (design doc 9). It should add firewall rules for TCP 53320, TCP 53321 and UDP 53320, and be code-signed against SmartScreen.
+- The private key is in `identity.pem`, not yet protected with DPAPI (design doc 3.3).
+- A hint "正在发送" when dragging in during a send (2.1); for now such a drag is ignored.
 
 ## Manual checklist
 
-- [ ] Drag a file from Explorer to the top center of the screen: the island opens with "松手发送到 书房台式机"
-- [ ] Release right away: sending → delivered, then it collapses after 1.5 s
-- [ ] After the island opens, drag down into the "其他设备" strip: the device list opens; slide to another device and release to send to it
+- [ ] First run: the guide asks for the name, explains the firewall prompt, then offers pairing; "开机时启动" sets the Run key
+- [ ] Pair with another computer from 设置 › 配对新设备: both screens show the same code
+- [ ] Another computer pairs with this one: the island shows the request with the code; 配对 / 拒绝 work
+- [ ] Drag a file from Explorer to the top center of the screen: the island opens with "松手发送到 …"; release: sending → delivered
+- [ ] After the island opens, drag down into the "其他设备" strip: the device list opens; release over another device
 - [ ] Release over an offline device: shows "离线，未发送"
-- [ ] Drag out of the island and keep holding: the hint "移到这里发送到 …" stays; release elsewhere and it collapses
-- [ ] Turn on "默认设备离线" in the tray menu: dragging in opens the device list right away
-- [ ] Set devices to 1, then to 0: one device is a single large target; with 0 it shows "还没有配对设备"
-- [ ] Set the send result to "对方忙（排队）": the queued state collapses to a small capsule after 3 s and the tray icon gets an orange dot, then it starts sending
-- [ ] Set the send result to "失败": "发送失败" with a retry button; retry works
-- [ ] "模拟接收文件": shows progress; when done the files can be dragged out, "在资源管理器中显示" works, and it stays open while hovered
-- [ ] Second monitor: dragging into its sensor opens the island there; a simulated receive shows on the primary screen
-- [ ] 150 % scaling, and monitors with different scaling: the island is crisp and at the top center of each
-- [ ] While the island shows, click and drag windows next to it: the transparent area lets everything through
+- [ ] Drag out of the island and keep holding: the hint stays; release elsewhere and it collapses
+- [ ] The receiver is busy with another sender: "排队中 · 前面还有 N 个", a small capsule after 3 s, an orange dot on the tray icon
+- [ ] The other computer quits mid-send: "发送失败" with 重试
+- [ ] Receive files: progress, then the files can be dragged out, "在资源管理器中显示" works, and it stays open while hovered
+- [ ] The sender cancels: "传输中断"
+- [ ] Tray menu: default device (offline grey), 配对新设备, 打开接收文件夹, 设置, 退出
+- [ ] Second monitor: dragging into its sensor opens the island there; incoming transfers show on the primary screen
+- [ ] 150 % scaling, and monitors with different scaling: crisp, at the top center of each
 - [ ] A full-screen video or game: no sensor and no island on that screen
