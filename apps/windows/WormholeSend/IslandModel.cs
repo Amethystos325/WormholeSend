@@ -314,10 +314,10 @@ sealed class IslandModel : INotifyPropertyChanged
         Schedule(Spec.RefusedHold, () => Phase = new Phase.Idle());
     }
 
-    void Fail(string reason)
+    void Fail(string reason, bool canRetry = true)
     {
         Sounded?.Invoke(Sound.Failed);
-        Phase = new Phase.Failed(reason);
+        Phase = new Phase.Failed(reason, canRetry);
         Schedule(Spec.FailedHold, () =>
         {
             if (phase is Phase.Failed) Phase = new Phase.Idle();
@@ -446,6 +446,10 @@ sealed class IslandModel : INotifyPropertyChanged
                 break;
             case "cancelled":
                 if (phase is Phase.Sending or Phase.Queued or Phase.AwaitingAcceptance) Phase = new Phase.Idle();
+                break;
+            // Asking again would only ask the same user again: no retry.
+            case "declined":
+                Fail(string.IsNullOrWhiteSpace(finished.Error) ? "对方拒绝了接收" : finished.Error, canRetry: false);
                 break;
             default:
                 Fail(finished.Status switch

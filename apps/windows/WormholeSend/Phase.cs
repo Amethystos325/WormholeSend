@@ -18,7 +18,8 @@ abstract record Phase
     /// Sending to a LocalSend device: its user has to accept first.
     public sealed record AwaitingAcceptance(string Alias) : Phase;
     public sealed record Done() : Phase;
-    public sealed record Failed(string Reason) : Phase;
+    /// A send failed; `CanRetry` is false when the other user declined it.
+    public sealed record Failed(string Reason, bool CanRetry = true) : Phase;
     /// Released over a device that can't take files ("离线", "需要重新配对").
     public sealed record Refused(string Name, string Reason = "离线") : Phase;
     public sealed record Receiving() : Phase;

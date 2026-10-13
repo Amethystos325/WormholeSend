@@ -34,7 +34,7 @@ abstract class PhaseContent : DockPanel
         Phase.AwaitingAcceptance a => new AwaitingContent(a.Alias, model.CancelTransfer),
         Phase.Done when model.Transfer is { } t =>
             new StatusLine(Glyphs.CheckFilled, Palette.Success, $"已送达 {t.Device.Name}", t.Label),
-        Phase.Failed f => new FailedContent(f.Reason, model.Retry),
+        Phase.Failed f => new FailedContent(f.Reason, f.CanRetry ? model.Retry : null),
         Phase.Refused r => new StatusLine(Glyphs.Blocked, Palette.Warning, $"{r.Name} {r.Reason}，未发送"),
         Phase.Receiving when model.Transfer is { } t => new ReceivingContent(t),
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
@@ -334,12 +334,12 @@ sealed class CompactQueued : PhaseContent
 
 sealed class FailedContent : PhaseContent
 {
-    public FailedContent(string reason, Action onRetry)
+    public FailedContent(string reason, Action? onRetry)
     {
         var icon = Ui.Dock(Ui.Icon(Glyphs.WarningFilled, 16, Palette.Warning), Dock.Left);
         icon.Margin = new Thickness(0, 0, 10, 0);
         Children.Add(icon);
-        Children.Add(Ui.Dock(new PillButton("重试", onRetry), Dock.Right));
+        if (onRetry is not null) Children.Add(Ui.Dock(new PillButton("重试", onRetry), Dock.Right));
         Children.Add(Ui.Centered(Ui.Text($"发送失败：{reason}", 13, Palette.Text, FontWeights.Medium)));
         VerticalAlignment = VerticalAlignment.Top;
         Height = 28;

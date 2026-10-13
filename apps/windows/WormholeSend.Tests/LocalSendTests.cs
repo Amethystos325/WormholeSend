@@ -77,7 +77,7 @@ public class LocalSendTests
         model.Retry();
         model.Handle(new TransferWaiting("send-2", "pixel", "Pixel 8"));
         model.Handle(new TransferFinished("send-2", true, "pixel", "Pixel 8", "declined", 0, 0, [], "Pixel 8 拒绝了接收"));
-        Assert.Equal(new Phase.Failed("Pixel 8 拒绝了接收"), model.Phase);
+        Assert.Equal(new Phase.Failed("Pixel 8 拒绝了接收", CanRetry: false), model.Phase);
     }
 
     [Fact]
