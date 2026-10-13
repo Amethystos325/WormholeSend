@@ -9,10 +9,9 @@ namespace WormholeSend;
 /// (design doc 2.1).
 sealed class TrayIcon : IDisposable
 {
-    const string Glyph = "";
-
     readonly Forms.NotifyIcon icon;
     readonly Forms.ContextMenuStrip menu = new();
+    readonly System.Windows.Threading.Dispatcher ui = System.Windows.Threading.Dispatcher.CurrentDispatcher;
     bool waiting;
 
     public TrayIcon(Action<Forms.ToolStripItemCollection> buildMenu, Action? open)
@@ -33,6 +32,20 @@ sealed class TrayIcon : IDisposable
             Visible = true,
         };
         if (open is not null) icon.MouseDoubleClick += (_, _) => open();
+        // Light or dark taskbar: redraw in its text color.
+        SystemEvents.UserPreferenceChanged += Redraw;
+    }
+
+    /// Raised on a thread of SystemEvents; the icon changes on the UI thread.
+    void Redraw(object? sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != UserPreferenceCategory.General) return;
+        ui.BeginInvoke(() =>
+        {
+            var old = icon.Icon;
+            icon.Icon = Draw(waiting);
+            old?.Dispose();
+        });
     }
 
     /// The waiting mark of a queued send.
@@ -51,49 +64,12 @@ sealed class TrayIcon : IDisposable
     public void Notify(string title, string text) =>
         icon.ShowBalloonTip(5000, title, text, Forms.ToolTipIcon.None);
 
-    /// The icon is drawn from the icon font in the taskbar's text color, so
-    /// the app needs no image files.
-    static Drawing.Icon Draw(bool badge)
-    {
-        var primary = ScreenInfo.All().FirstOrDefault(s => s.Primary);
-        var size = (int)Math.Round(16 * (primary?.Scale ?? 1));
-        using var bitmap = new Drawing.Bitmap(size, size);
-        using (var g = Drawing.Graphics.FromImage(bitmap))
-        {
-            g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            var color = TaskbarIsLight() ? Drawing.Color.Black : Drawing.Color.White;
-            using var font = new Drawing.Font(IconFontName(), size * 0.8f, Drawing.GraphicsUnit.Pixel);
-            using var brush = new Drawing.SolidBrush(color);
-            using var format = new Drawing.StringFormat
-            {
-                Alignment = Drawing.StringAlignment.Center,
-                LineAlignment = Drawing.StringAlignment.Center,
-            };
-            g.DrawString(Glyph, font, brush, new Drawing.RectangleF(0, 0, size, size), format);
-            if (badge)
-            {
-                var dot = size * 0.42f;
-                using var orange = new Drawing.SolidBrush(Drawing.Color.FromArgb(255, 158, 10));
-                g.FillEllipse(orange, size - dot, size - dot, dot, dot);
-            }
-        }
-        var handle = bitmap.GetHicon();
-        try
-        {
-            return (Drawing.Icon)Drawing.Icon.FromHandle(handle).Clone();
-        }
-        finally
-        {
-            Native.DestroyIcon(handle);
-        }
-    }
-
-    static string IconFontName()
-    {
-        using var fonts = new Drawing.Text.InstalledFontCollection();
-        return fonts.Families.Any(f => f.Name == "Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
-    }
+    /// The black hole (TrayGlyph) in the taskbar's text color, with the
+    /// orange of the island's warnings for the waiting mark.
+    static Drawing.Icon Draw(bool badge) =>
+        TrayGlyph.Icon(
+            TaskbarIsLight() ? Drawing.Color.Black : Drawing.Color.White,
+            badge ? Drawing.Color.FromArgb(255, 158, 10) : null);
 
     static bool TaskbarIsLight()
     {
@@ -103,6 +79,7 @@ sealed class TrayIcon : IDisposable
 
     public void Dispose()
     {
+        SystemEvents.UserPreferenceChanged -= Redraw;
         icon.Visible = false;
         icon.Dispose();
         menu.Dispose();
