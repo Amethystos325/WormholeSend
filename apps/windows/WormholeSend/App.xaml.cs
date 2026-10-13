@@ -19,6 +19,11 @@ public partial class App : Application
         TextOptions.TextFormattingModeProperty.OverrideMetadata(typeof(FrameworkElement),
             new FrameworkPropertyMetadata(TextFormattingMode.Display,
                 FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.Inherits));
+        // WPF assumes en-US, and for Chinese characters that falls back to a
+        // Japanese font (Yu Gothic): the language picks the CJK font. The
+        // text is Chinese.
+        FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
+            new FrameworkPropertyMetadata(System.Windows.Markup.XmlLanguage.GetLanguage("zh-CN")));
         var options = Options.Parse(e.Args);
         if (options.Log) Log.Enable();
         // One app per data directory. Starting it again opens the settings
