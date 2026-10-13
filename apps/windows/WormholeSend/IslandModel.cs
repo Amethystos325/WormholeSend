@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace WormholeSend;
@@ -412,9 +413,14 @@ sealed class IslandModel : INotifyPropertyChanged
             case ReceiveRequest request:
                 ShowReceiveRequest(new Phase.ReceiveRequest(request.RequestId, request.Alias, request.Label, request.Total, request.Text));
                 break;
+            // Unanswered for a minute, it just goes; the sender giving up is said.
             case ReceiveClosed closed:
                 if (pendingRequest?.RequestId == closed.RequestId) pendingRequest = null;
-                if (phase is Phase.ReceiveRequest shown && shown.RequestId == closed.RequestId) Phase = new Phase.Idle();
+                if (phase is not Phase.ReceiveRequest shown || shown.RequestId != closed.RequestId) break;
+                if (closed.Reason == "cancelled")
+                    Notify(new Phase.Notice($"{shown.Alias} 取消了发送", Success: false));
+                else
+                    Phase = new Phase.Idle();
                 break;
             case DeviceUpdated updated when devices.Any(d => d.Id == updated.Id):
                 Devices = devices.Select(d => d.Id == updated.Id ? d with { Name = updated.Alias, Online = updated.Online } : d).ToList();
@@ -602,15 +608,9 @@ sealed class IslandModel : INotifyPropertyChanged
             Phase = new Phase.Idle();
             return;
         }
-        var copied = CopyText(text);
-        CancelTimers();
-        Phase = copied
+        Notify(CopyText(text)
             ? new Phase.Notice("已复制到剪贴板", Success: true, Preview(text))
-            : new Phase.Notice("无法写入剪贴板", Success: false);
-        Schedule(copied ? Spec.DoneHold : Spec.FailedHold, () =>
-        {
-            if (phase is Phase.Notice) Phase = new Phase.Idle();
-        });
+            : new Phase.Notice("无法写入剪贴板", Success: false));
     }
 
     /// The start of a text, on one line.
@@ -626,9 +626,14 @@ sealed class IslandModel : INotifyPropertyChanged
     public void ShowNotice(string text, bool success)
     {
         if (!(CanShowReceive || phase is Phase.PairRequest or Phase.PairWaiting)) return;
+        Notify(new Phase.Notice(text, success));
+    }
+
+    void Notify(Phase.Notice notice)
+    {
         CancelTimers();
-        Phase = new Phase.Notice(text, success);
-        Schedule(success ? Spec.DoneHold : Spec.FailedHold, () =>
+        Phase = notice;
+        Schedule(notice.Success ? Spec.DoneHold : Spec.FailedHold, () =>
         {
             if (phase is Phase.Notice) Phase = new Phase.Idle();
         });
@@ -703,7 +708,7 @@ sealed class IslandModel : INotifyPropertyChanged
                 content = new Size(380, 78);
                 break;
             // A text message shows its first two lines.
-            case Phase.ReceiveRequest { Text: not null }:
+            case Phase.ReceiveRequest { Text: { } text } when !OneLine(text):
                 content = new Size(380, 92);
                 break;
             case Phase.ReceiveRequest:
@@ -715,6 +720,14 @@ sealed class IslandModel : INotifyPropertyChanged
         }
         return new Size(content.Width, content.Height + 24);
     }
+
+    /// Whether a text message fits on one line of its request (12 px, the
+    /// island's 380 less the padding).
+    static bool OneLine(string text) =>
+        !text.Contains('\n') && new FormattedText(
+            text, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            new Typeface(Fonts.Ui, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), 12, Palette.Text, 1)
+            .WidthIncludingTrailingWhitespace <= 348;
 
     /// The device list grows past its usual width from five devices on, up
     /// to the window's.

@@ -167,6 +167,24 @@ public class LocalSendTests
     }
 
     [Fact]
+    public void ASenderGivingUpIsSaid()
+    {
+        var model = Model([]);
+        model.Handle(Request("r1"));
+        model.Handle(new ReceiveClosed("r1", "cancelled"));
+        Assert.Equal(new Phase.Notice("Pixel 8 取消了发送", Success: false), model.Phase);
+    }
+
+    [Fact]
+    public void AShortTextTakesOneLine()
+    {
+        var model = Model([]);
+        Assert.Equal(new Size(380, 102), model.BodySizeFor(new Phase.ReceiveRequest("r", "Pixel 8", "一段文字", 0, "你好")));
+        Assert.Equal(new Size(380, 116), model.BodySizeFor(new Phase.ReceiveRequest("r", "Pixel 8", "一段文字", 0, new string('长', 60))));
+        Assert.Equal(new Size(380, 116), model.BodySizeFor(new Phase.ReceiveRequest("r", "Pixel 8", "一段文字", 0, "两行\n文字")));
+    }
+
+    [Fact]
     public void LocalSendEventsParse()
     {
         Assert.Equal(new DeviceUpdated("D", "Pixel", "mobile", true, false, LocalSend: true),
