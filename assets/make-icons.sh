@@ -1,7 +1,8 @@
 #!/bin/sh
 # Renders app-icon.svg into the platform icons, which are committed:
 #   apps/macos/Resources/AppIcon.icns  the 1024 canvas, macOS margin included
-#   assets/app-icon.ico                cropped to the plate, 16 to 256 px
+#   assets/app-icon.ico                cropped to the plate, 16 to 256 px;
+#                                      16, 20 and 24 px from app-icon-small.svg
 # Rasterizing SVG (masks, gradients) needs a browser engine: headless Google
 # Chrome, with a throwaway profile. Run it again after changing the SVG.
 set -e
@@ -35,9 +36,11 @@ iconutil -c icns -o ../apps/macos/Resources/AppIcon.icns "$SET"
 # Windows: no margin around the plate.
 sed 's/viewBox="0 0 1024 1024"/viewBox="100 100 824 824"/' app-icon.svg > "$TMP/windows.svg"
 render "$TMP/windows.svg" "$TMP/windows.png"
+render "$PWD/app-icon-small.svg" "$TMP/small.png"
 SIZES="16 20 24 32 40 48 64 256"
 for size in $SIZES; do
-    scale "$TMP/windows.png" $size "$TMP/win-$size.png"
+    if [ $size -le 24 ]; then source="$TMP/small.png"; else source="$TMP/windows.png"; fi
+    scale "$source" $size "$TMP/win-$size.png"
 done
 # An .ico is a directory of PNG images.
 python3 - "$TMP" app-icon.ico $SIZES <<'PY'
