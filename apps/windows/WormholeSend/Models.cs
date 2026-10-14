@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows;
 using System.Text.Json.Nodes;
 
 namespace WormholeSend;
@@ -66,6 +67,48 @@ static class FileLabel
             $"{name} 等 {count} 个{new[] { "文件", "文件夹", "文件或文件夹" }[kind]}",
             $"{name} and {more} more {new[] { "file", "folder", "item" }[kind]}{(more == 1 ? "" : "s")}",
             $"{name} など {count} 個の{new[] { "ファイル", "フォルダ", "項目" }[kind]}");
+    }
+}
+
+/// The files a drag carries. Explorer gives a file list (CF_HDROP); apps
+/// built on Chromium, such as VS Code dragging from its explorer, don't:
+/// they give the paths as text, one per line, and at most one file as a
+/// download. Text counts as files when every line is a full path (or a
+/// file: URL) of a file or folder that exists.
+static class DragPaths
+{
+    static string? lastText;
+    static string[]? lastPaths;
+
+    public static string[]? Of(IDataObject data)
+    {
+        if (data.GetData(DataFormats.FileDrop) is string[] files) return files;
+        if (data.GetData(DataFormats.UnicodeText) is not string text) return null;
+        // Asked on every move of the drag; the answer doesn't change.
+        if (text != lastText)
+        {
+            lastText = text;
+            lastPaths = FromText(text, path => File.Exists(path) || Directory.Exists(path));
+        }
+        return lastPaths;
+    }
+
+    public static string[]? FromText(string text, Func<string, bool> exists)
+    {
+        var lines = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length == 0) return null;
+        var paths = new string[lines.Length];
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim('"');
+            if (line.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                && Uri.TryCreate(line, UriKind.Absolute, out var uri) && uri.IsFile)
+                line = uri.LocalPath;
+            if (!Path.IsPathFullyQualified(line)) return null;
+            if (!exists(line)) return null;
+            paths[i] = line;
+        }
+        return paths;
     }
 }
 

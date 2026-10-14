@@ -59,4 +59,20 @@ public sealed class LabelTests : IDisposable
         stats.Update(400_000_000, 1_000_000_000, 0, TimeSpan.FromSeconds(3));
         Assert.Equal(150_000_000, stats.Speed);
     }
+
+    [Fact]
+    public void PathsAsTextAreFilesWhenTheyAllExist()
+    {
+        // As VS Code gives them: one per line.
+        var file = Make("登记表.docx");
+        var folder = Make("设计稿", folder: true);
+        Assert.Equal([file, folder], DragPaths.FromText(file + "\r\n" + folder, Path.Exists)!);
+        Assert.Equal([file], DragPaths.FromText(new Uri(file).AbsoluteUri, Path.Exists)!);
+        Assert.Equal([file], DragPaths.FromText($"\"{file}\"\n", Path.Exists)!);
+        Assert.Null(DragPaths.FromText(file + "\r\n" + Path.Combine(dir, "没有.txt"), Path.Exists));
+        Assert.Null(DragPaths.FromText("登记表.docx", _ => true));
+        Assert.Null(DragPaths.FromText("Hello, world", _ => true));
+        Assert.Null(DragPaths.FromText("https://example.com/a.txt", _ => true));
+        Assert.Null(DragPaths.FromText(" \r\n", _ => true));
+    }
 }

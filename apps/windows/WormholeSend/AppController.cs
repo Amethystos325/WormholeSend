@@ -541,7 +541,8 @@ sealed class AppController(Options options) : IDragTarget, ISession
         e.Handled = true;
         e.Effects = DragDropEffects.None;
         if (FileChip.DraggingOut) return;
-        var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+        var files = DragPaths.Of(e.Data);
+        if (files is null) LogFormats(e.Data);
         // Anything but files (text, a link) only gets an answer when the
         // hint already shows for it.
         if (files is null && !model.Phase.AcceptsDrag) return;
@@ -556,6 +557,17 @@ sealed class AppController(Options options) : IDragTarget, ISession
         if (model.CanDrop) e.Effects = DragDropEffects.Copy;
     }
 
+    string? loggedFormats;
+
+    /// What a drag that isn't files carries, once for each kind.
+    void LogFormats(IDataObject data)
+    {
+        var formats = string.Join(", ", data.GetFormats());
+        if (formats == loggedFormats) return;
+        loggedFormats = formats;
+        Log.Write($"drag of {formats}");
+    }
+
     public void DragLeft(IslandWindow window)
     {
         if (window != active) return;
@@ -568,7 +580,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
     {
         e.Handled = true;
         dragWatch.Stop();
-        var files = e.Data.GetData(DataFormats.FileDrop) as string[] ?? [];
+        var files = DragPaths.Of(e.Data) ?? [];
         var taken = window == active && !FileChip.DraggingOut && model.Drop(files);
         e.Effects = taken ? DragDropEffects.Copy : DragDropEffects.None;
         model.DragEnded();

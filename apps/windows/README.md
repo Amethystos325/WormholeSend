@@ -36,6 +36,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 ## How it differs from macOS
 
 - Windows has no global drag events without hooks. While a mouse button is held the app looks for ole32's drag window, which has the mouse captured during a drag (`DragMonitor.cs`), and shows the hint on the screen under the cursor, following it between screens. What a drag carries is only known once it reaches the island, so text and links show the hint too; over the island they get "只能发送文件".
+- Apps built on Chromium (VS Code's explorer, for one) don't give a file list (CF_HDROP) but the paths as text, one per line. Text counts as files when every line is a full path or a file: URL of something that exists. `--log` prints what a drag that isn't files carries.
 - Drags that don't go through DoDragDrop aren't noticed until they reach the 240 × 6 sensor at the top center of each screen, which opens the island there.
 - The sensor and the drop halo are painted at alpha 1/255: layered windows only take drags and clicks on pixels that are not fully transparent. The sensor therefore also takes clicks in its 240 × 6 area.
 - After a drag leaves the island the hint stays until the mouse button is released, which the app learns by polling the buttons (no drag events reach it then).
