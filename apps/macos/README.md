@@ -7,9 +7,11 @@ LocalSend devices (1.18+) can't pair, but files go both ways, confirmed by the r
 ## Running it
 
 ```bash
-./scripts/bundle.sh          # builds the core (scripts/build-core.sh) and build/Wormhole Send.app (ad-hoc signed)
+./scripts/bundle.sh          # builds the core (scripts/build-core.sh) and build/Wormhole Send.app
 open "build/Wormhole Send.app"
 ```
+
+The bundle is signed with `$WHS_SIGN_IDENTITY` if set, else the first valid "Apple Development" certificate in the keychain, else ad-hoc. With a certificate macOS knows the app by its bundle ID and team, so Full Disk Access and Local Network stay granted across rebuilds; an ad-hoc signature is new with every build, and both have to be granted again. This is for your own Mac: Gatekeeper still rejects the app elsewhere (that needs Developer ID and notarization).
 
 The app icon is `Resources/AppIcon.icns`, rendered from `assets/app-icon.svg` by `assets/make-icons.sh` (which also writes the Windows `assets/app-icon.ico`; it needs Google Chrome to rasterize the SVG). Building the core needs Rust. `scripts/build-core.sh --universal` produces arm64 + x86_64 (first run `rustup target add aarch64-apple-darwin x86_64-apple-darwin`).
 
@@ -47,7 +49,7 @@ States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `u
 - [ ] Coming up from below to the default device: passing through the strip position does not open the device list by mistake
 - [ ] Release over an offline device: shows "离线，未发送" and the file flies back
 - [ ] Drag out of the island and release: the island collapses and the file flies back
-- [ ] Drag a file out of a WeChat chat without Full Disk Access: "读取 微信 的文件需要完全磁盘访问权限" (failed.wav plays), the file flies back and nothing is sent; "打开设置" opens Privacy & Security › Full Disk Access. With the access on, the same drag sends. (WeChat drags out a path into its own container, which macOS 14+ keeps from other apps; an ad-hoc signed build has to be switched on again after each rebuild.)
+- [ ] Drag a file out of a WeChat chat without Full Disk Access: "读取 微信 的文件需要完全磁盘访问权限" (failed.wav plays), the file flies back and nothing is sent; "打开设置" opens Privacy & Security › Full Disk Access and selects the app in Finder; drag it into the list and switch it on, and the same drag sends. (WeChat drags out a path into its own container, which macOS 14+ keeps from other apps; an ad-hoc signed build has to be switched on again after each rebuild.)
 - [ ] Default device offline (the other side quits): dragging in opens the device list right away
 - [ ] With 1 paired device: a single large target; with 0 it shows "还没有配对设备"
 - [ ] The receiver is busy receiving from another device: the queued state collapses to a small badge beside the camera after 3 s; when its turn comes it sends automatically

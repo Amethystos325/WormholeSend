@@ -11,11 +11,16 @@ enum AppData {
         urls.first { !canOpen($0.path) }
     }
 
-    /// System Settings › Privacy & Security › Full Disk Access.
+    /// System Settings › Privacy & Security › Full Disk Access, with this app
+    /// selected in Finder to drag into the list. There is no API to add it,
+    /// and the system lists an app on its own only after it is denied one of
+    /// the files that protection covers, like Mail's or Safari's, which this
+    /// app has no business touching.
     static func openSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
         }
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
     }
 
     /// False only when the system denies it, not for a missing file or a
