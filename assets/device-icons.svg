@@ -1,0 +1,40 @@
+<!-- Wormhole Send device glyphs, drawn like the tray icon (tray-icon.svg):
+     24-unit grid, stroke 1.8, round caps and joins, monochrome (currentColor).
+     One symbol per device type; the island shows them in cream (#F7F3EA)
+     on a deep-space plate (#1D1A2E), ringed in amber (#FFB547) on the target.
+     macOS draws the same geometry in apps/macos/Sources/WormholeSend/DeviceGlyph.swift. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="144" height="24" viewBox="0 0 144 24"
+     fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- desktop -->
+  <g>
+    <rect x="3" y="4" width="18" height="12" rx="2.5"/>
+    <path d="M12 16v3.5M8.5 20h7"/>
+  </g>
+  <!-- laptop -->
+  <g transform="translate(24 0)">
+    <rect x="5" y="5.5" width="14" height="10" rx="2"/>
+    <path d="M2.5 18.5h19"/>
+  </g>
+  <!-- phone (LocalSend "mobile") -->
+  <g transform="translate(48 0)">
+    <rect x="7" y="2.5" width="10" height="19" rx="3"/>
+    <path d="M11 18.5h2"/>
+  </g>
+  <!-- tablet -->
+  <g transform="translate(72 0)">
+    <rect x="4.5" y="3" width="15" height="18" rx="2.5"/>
+    <path d="M11 18h2"/>
+  </g>
+  <!-- web -->
+  <g transform="translate(96 0)">
+    <circle cx="12" cy="12" r="8.5"/>
+    <ellipse cx="12" cy="12" rx="3.6" ry="8.5"/>
+    <path d="M3.5 12h17"/>
+  </g>
+  <!-- server ("server", "headless"); the dots are zero-length round-capped strokes -->
+  <g transform="translate(120 0)">
+    <rect x="4" y="4" width="16" height="7" rx="2"/>
+    <rect x="4" y="13" width="16" height="7" rx="2"/>
+    <path d="M8 7.5h0M8 16.5h0"/>
+  </g>
+</svg>

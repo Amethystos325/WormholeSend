@@ -268,7 +268,7 @@ final class IslandModel {
         localSend.removeAll { $0.id == id }
         if event.online == true {
             localSend.append(Device(
-                id: id, name: event.alias ?? Self.unknownDevice, symbol: Device.symbol(for: event.deviceType),
+                id: id, name: event.alias ?? Self.unknownDevice, glyph: DeviceGlyph(deviceType: event.deviceType),
                 online: true, isDefault: false, isLocalSend: true))
         }
     }
@@ -426,7 +426,7 @@ final class IslandModel {
     private func receiveStarted(_ event: CoreEvent) {
         let id = event.deviceId ?? ""
         let device = devices.first { $0.id == id } ?? requestSenders[id]
-            ?? Device(id: id, name: event.alias ?? Self.unknownDevice, symbol: "desktopcomputer", online: true, isDefault: false)
+            ?? Device(id: id, name: event.alias ?? Self.unknownDevice, glyph: .desktop, online: true, isDefault: false)
         let count = event.files ?? 0
         incoming = Transfer(id: event.id, device: device, files: [], label: FileLabel.count(count), count: count)
         if canShowIncoming {
@@ -561,7 +561,7 @@ final class IslandModel {
         guard let id = event.requestId, let deviceId = event.deviceId else { return }
         let device = devices.first { $0.id == deviceId }
             ?? Device(
-                id: deviceId, name: event.alias ?? Self.unknownDevice, symbol: Device.symbol(for: event.deviceType),
+                id: deviceId, name: event.alias ?? Self.unknownDevice, glyph: DeviceGlyph(deviceType: event.deviceType),
                 online: true, isDefault: false, isLocalSend: true)
         requestSenders[deviceId] = device
         let request = ReceiveRequest(

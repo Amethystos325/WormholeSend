@@ -364,7 +364,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if repair.contains(device.id) { title += tr("（需要重新配对）", " (needs re-pairing)", "（再ペアリングが必要）") }
                 let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                 item.state = device.isDefault ? .on : .off
-                item.image = icon(device.symbol)
+                item.image = device.glyph.menuImage()
                 let actions = NSMenu()
                 actions.addItem(actionItem(
                     tr("设为默认设备", "Set as Default Device", "デフォルトのデバイスに設定"), #selector(setDefault(_:)), device.id,
@@ -453,8 +453,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(disabledItem(searching, symbol: "antenna.radiowaves.left.and.right"))
         }
         for device in nearby {
-            let symbol = Device.symbol(for: device.deviceType)
-            menu.addItem(actionItem(device.alias, #selector(startPairing(_:)), device.fingerprint, symbol: symbol))
+            let item = actionItem(device.alias, #selector(startPairing(_:)), device.fingerprint, symbol: nil)
+            item.image = DeviceGlyph(deviceType: device.deviceType).menuImage()
+            menu.addItem(item)
         }
     }
 
@@ -470,13 +471,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func actionItem(
-        _ title: String, _ action: Selector, _ deviceId: String, symbol: String, enabled: Bool = true
+        _ title: String, _ action: Selector, _ deviceId: String, symbol: String?, enabled: Bool = true
     ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: enabled ? action : nil, keyEquivalent: "")
         item.target = self
         item.representedObject = deviceId
         item.isEnabled = enabled
-        item.image = icon(symbol)
+        item.image = symbol.flatMap(icon)
         return item
     }
 

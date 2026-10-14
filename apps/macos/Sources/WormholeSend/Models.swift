@@ -5,8 +5,7 @@ import AppKit
 struct Device: Identifiable, Equatable {
     let id: String
     var name: String
-    /// SF Symbol of the device type.
-    var symbol: String
+    var glyph: DeviceGlyph
     var online: Bool
     var isDefault: Bool
     /// It refused a transfer: it no longer trusts this device.
@@ -15,12 +14,12 @@ struct Device: Identifiable, Equatable {
     var isLocalSend = false
 
     init(
-        id: String, name: String, symbol: String, online: Bool, isDefault: Bool,
+        id: String, name: String, glyph: DeviceGlyph, online: Bool, isDefault: Bool,
         needsRepair: Bool = false, isLocalSend: Bool = false
     ) {
         self.id = id
         self.name = name
-        self.symbol = symbol
+        self.glyph = glyph
         self.online = online
         self.isDefault = isDefault
         self.needsRepair = needsRepair
@@ -29,7 +28,7 @@ struct Device: Identifiable, Equatable {
 
     init(info: DeviceInfo) {
         self.init(
-            id: info.fingerprint, name: info.alias, symbol: Device.symbol(for: info.deviceType),
+            id: info.fingerprint, name: info.alias, glyph: DeviceGlyph(deviceType: info.deviceType),
             online: info.online, isDefault: info.isDefault, needsRepair: info.needsRepair,
             isLocalSend: info.kind == "localsend")
     }
@@ -52,23 +51,14 @@ struct Device: Identifiable, Equatable {
             : tr("\(name) 离线，未发送", "\(name) is offline, not sent", "\(name) はオフラインのため送信しませんでした")
     }
 
-    static func symbol(for deviceType: String?) -> String {
-        switch deviceType {
-        case "mobile": "iphone"
-        case "web": "globe"
-        case "server", "headless": "server.rack"
-        default: "desktopcomputer"
-        }
-    }
-
     static let samples: [Device] = [
-        Device(id: "desk", name: "书房台式机", symbol: "desktopcomputer", online: true, isDefault: true),
-        Device(id: "air", name: "MacBook Air", symbol: "laptopcomputer", online: true, isDefault: false),
-        Device(id: "ipad", name: "iPad", symbol: "ipad", online: false, isDefault: false),
+        Device(id: "desk", name: "书房台式机", glyph: .desktop, online: true, isDefault: true),
+        Device(id: "air", name: "MacBook Air", glyph: .laptop, online: true, isDefault: false),
+        Device(id: "ipad", name: "iPad", glyph: .tablet, online: false, isDefault: false),
     ]
 
     static let localSendSample = Device(
-        id: "pixel", name: "Pixel 8", symbol: "iphone", online: true, isDefault: false, isLocalSend: true)
+        id: "pixel", name: "Pixel 8", glyph: .phone, online: true, isDefault: false, isLocalSend: true)
 }
 
 /// A LocalSend device asks to send files, or a text message (`receive.request`).

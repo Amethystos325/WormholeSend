@@ -20,7 +20,7 @@ To test against `whs` on the same Mac, give the app its own data directory and p
 
 You can also open this directory in Xcode (it's a Swift Package) and run it from there.
 
-Menu bar icon (a black hole: a ring with its accretion disk tilted across it, `Sources/WormholeSend/StatusIcon.swift`, source `assets/tray-icon.svg`): paired devices (set as default, unpair), pair a new device (nearby devices), open the receive folder (its path shows below on macOS 14.4+), change the receive folder, sounds on or off, language. Every row has an SF Symbol.
+Menu bar icon (a black hole: a ring with its accretion disk tilted across it, `Sources/WormholeSend/StatusIcon.swift`, source `assets/tray-icon.svg`): paired devices (set as default, unpair), pair a new device (nearby devices), open the receive folder (its path shows below on macOS 14.4+), change the receive folder, sounds on or off, language. Every row has an SF Symbol, except devices: they get the app's own device glyphs (`Sources/WormholeSend/DeviceGlyph.swift`, source `assets/device-icons.svg`), the same ones the island draws in cream on a deep-space plate, ringed in amber on the device a drop goes to.
 
 Sounds (design doc 2.5) are the app's own files, the same as on Windows: `assets/sounds/*.wav`, synthesized by `make-sounds.py` and copied into the bundle by `scripts/bundle.sh`. `sent.wav` when files are delivered, `received.wav` when files are received, `failed.wav` when a send fails or a receive breaks off, `pair-request.wav` for a pairing request; played at 60% volume.
 

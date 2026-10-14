@@ -211,13 +211,20 @@ private struct Avatar: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
+            // A deep-space plate; the device it goes to is ringed in the
+            // disk's warm light.
             Circle()
-                .fill(highlighted ? Palette.accent : Palette.tile)
+                .fill(Palette.plate)
+                .overlay {
+                    if highlighted {
+                        Circle().strokeBorder(Palette.accent, lineWidth: max(1.2, size * 0.036))
+                    }
+                }
                 .frame(width: size, height: size)
                 .overlay {
-                    Image(systemName: device.symbol)
-                        .font(.system(size: size * 0.45, weight: .regular))
-                        .foregroundStyle(device.usable ? Palette.text : Palette.tertiary)
+                    DeviceGlyphShape(glyph: device.glyph)
+                        .fill(device.usable ? Palette.cream : Palette.tertiary)
+                        .frame(width: size * 0.46, height: size * 0.46)
                 }
             if device.usable, size >= 36 {
                 Circle()
@@ -265,12 +272,12 @@ private struct MoreStrip: View {
             HStack(spacing: -6) {
                 ForEach(others.prefix(3)) { device in
                     Circle()
-                        .fill(Palette.tile)
+                        .fill(Palette.plate)
                         .frame(width: 20, height: 20)
                         .overlay {
-                            Image(systemName: device.symbol)
-                                .font(.system(size: 9))
-                                .foregroundStyle(device.online ? Palette.text : Palette.tertiary)
+                            DeviceGlyphShape(glyph: device.glyph)
+                                .fill(device.online ? Palette.cream : Palette.tertiary)
+                                .frame(width: 11, height: 11)
                         }
                         .overlay(Circle().stroke(Palette.island, lineWidth: 1.5))
                 }
@@ -436,7 +443,7 @@ private struct ProgressContent: View {
                         .font(.system(size: 11.5).monospacedDigit())
                         .foregroundStyle(Palette.secondary)
                 }
-                ProgressBar(value: progress, height: 4, fill: Palette.accent)
+                ProgressBar(value: progress, height: 4)
                 Text(detail)
                     .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(Palette.secondary)
@@ -554,7 +561,7 @@ private struct PairRequestContent: View {
                 Button(tr("拒绝", "Decline", "拒否"), action: onDecline)
                     .buttonStyle(PillButtonStyle())
                 Button(tr("配对", "Pair", "ペアリング"), action: onAccept)
-                    .buttonStyle(PillButtonStyle(fill: Palette.accent))
+                    .buttonStyle(PillButtonStyle(fill: Palette.accent, label: Palette.onAccent))
             }
         }
     }
@@ -608,7 +615,7 @@ private struct ReceiveRequestContent: View {
                         .buttonStyle(PillButtonStyle())
                 }
                 Button(request.text == nil ? tr("接收", "Accept", "受信") : tr("复制", "Copy", "コピー"), action: onAccept)
-                    .buttonStyle(PillButtonStyle(fill: Palette.accent))
+                    .buttonStyle(PillButtonStyle(fill: Palette.accent, label: Palette.onAccent))
             }
         }
     }
@@ -711,7 +718,7 @@ private struct ReceivingContent: View {
                     .font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(Palette.secondary)
             }
-            ProgressBar(value: transfer.progress, height: 4, fill: Palette.accent)
+            ProgressBar(value: transfer.progress, height: 4)
         }
     }
 }
@@ -769,16 +776,16 @@ private struct FileChip: View {
 
 // MARK: - Small parts
 
+/// Filled with the accretion disk's gradient.
 private struct ProgressBar: View {
     let value: Double
     let height: CGFloat
-    let fill: Color
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule().fill(Palette.track)
-                Capsule().fill(fill).frame(width: geometry.size.width * max(0, min(1, value)))
+                Capsule().fill(Palette.disk).frame(width: geometry.size.width * max(0, min(1, value)))
             }
         }
         .frame(height: height)
@@ -801,12 +808,13 @@ private struct CancelButton: View {
 
 private struct PillButtonStyle: ButtonStyle {
     var fill = Palette.tile
+    var label = Palette.text
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             // Digits keep their width, e.g. in a countdown.
             .font(.system(size: 12, weight: .semibold).monospacedDigit())
-            .foregroundStyle(Palette.text)
+            .foregroundStyle(label)
             .padding(.horizontal, 14)
             .padding(.vertical, 5)
             .background(Capsule().fill(fill.opacity(configuration.isPressed ? 0.7 : 1)))

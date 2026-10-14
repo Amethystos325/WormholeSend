@@ -43,7 +43,17 @@ enum Palette {
     static let tile = Color(white: 0.16)
     static let tileHot = Color(white: 0.13)
     static let track = Color(white: 0.22)
-    static let accent = Color(red: 0.04, green: 0.52, blue: 1.0)
+    /// The app icon's colors: the accretion disk's warm light, the ring's
+    /// cream and the deep-space plate (assets/app-icon.svg).
+    static let accent = Color(red: 0xFF / 255, green: 0xB5 / 255, blue: 0x47 / 255)
+    /// Text on `accent`.
+    static let onAccent = plate
+    /// The disk's gradient, along a progress bar.
+    static let disk = LinearGradient(
+        colors: [Color(red: 0xF2 / 255, green: 0x68 / 255, blue: 0x3C / 255), accent],
+        startPoint: .leading, endPoint: .trailing)
+    static let cream = Color(red: 0xF7 / 255, green: 0xF3 / 255, blue: 0xEA / 255)
+    static let plate = Color(red: 0x1D / 255, green: 0x1A / 255, blue: 0x2E / 255)
     static let success = Color(red: 0.19, green: 0.82, blue: 0.35)
     static let warning = Color(red: 1.0, green: 0.62, blue: 0.04)
 }
