@@ -84,7 +84,7 @@ public partial class SettingsWindow : FluentWindow
             DeviceList.Children.Add(new CardControl
             {
                 Margin = new Thickness(0, 0, 0, 6),
-                Icon = new SymbolIcon { Symbol = device.Glyph == Glyphs.Phone ? SymbolRegular.Phone24 : SymbolRegular.Desktop24 },
+                Icon = new DeviceSymbolIcon(device.Glyph),
                 Header = new StackPanel
                 {
                     Children =

@@ -98,8 +98,8 @@ sealed class MoreStrip : Border
         foreach (var (device, index) in others.Take(3).Select((d, i) => (d, i)))
         {
             var face = new Grid { Width = 20, Height = 20, Margin = new Thickness(index == 0 ? 0 : -6, 0, 0, 0) };
-            face.Children.Add(new Ellipse { Fill = Palette.Tile, Stroke = Palette.Island, StrokeThickness = 1.5 });
-            face.Children.Add(Ui.Icon(device.Glyph, 9, device.Online ? Palette.Text : Palette.Tertiary));
+            face.Children.Add(new Ellipse { Fill = Palette.Plate, Stroke = Palette.Island, StrokeThickness = 1.5 });
+            face.Children.Add(new DeviceIcon(device.Glyph, 11, device.Online ? Palette.Cream : Palette.Tertiary));
             faces.Children.Add(face);
         }
 
@@ -242,7 +242,7 @@ sealed class StatusLine : PhaseContent
 sealed class ProgressContent : PhaseContent
 {
     readonly TextBlock percent = Ui.Percent();
-    readonly ProgressLine bar = new(4, Palette.Accent);
+    readonly ProgressLine bar = new(4);
     readonly TextBlock detail = Ui.Text("", 11, Palette.Secondary);
 
     public ProgressContent(Device device, string title, Action onCancel)
@@ -359,7 +359,7 @@ sealed class ReceivingContent : PhaseContent
 {
     readonly TextBlock percent = Ui.Percent();
     readonly TextBlock detail = Ui.Text("", 11, Palette.Secondary);
-    readonly ProgressLine bar = new(4, Palette.Accent);
+    readonly ProgressLine bar = new(4);
 
     public ReceivingContent(Transfer transfer)
     {
@@ -419,7 +419,7 @@ sealed class PairRequestContent : PhaseContent
     {
         var buttons = Ui.Row(8,
             new PillButton(L.T("拒绝", "Decline", "拒否"), () => answer(false)),
-            new PillButton(L.T("配对", "Pair", "ペアリング"), () => answer(true), Palette.Accent));
+            new PillButton(L.T("配对", "Pair", "ペアリング"), () => answer(true), Palette.Accent, Palette.OnAccent));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.Margin = new Thickness(0, 10, 0, 0);
         Children.Add(Ui.Dock(buttons, Dock.Bottom));
@@ -456,7 +456,7 @@ sealed class ReceiveRequestContent : PhaseContent
         Unloaded += (_, _) => countdown.Stop();
         var buttons = Ui.Row(8,
             decline,
-            new PillButton(text ? L.T("复制", "Copy", "コピー") : L.T("接收", "Accept", "受信"), () => model.AnswerReceive(true), Palette.Accent));
+            new PillButton(text ? L.T("复制", "Copy", "コピー") : L.T("接收", "Accept", "受信"), () => model.AnswerReceive(true), Palette.Accent, Palette.OnAccent));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.Margin = new Thickness(0, 10, 0, 0);
         Children.Add(Ui.Dock(buttons, Dock.Bottom));

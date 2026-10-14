@@ -54,7 +54,15 @@ static class Palette
     public static readonly Brush Strip = Gray(0.1);
     public static readonly Brush StripText = Gray(0.8);
     public static readonly Brush HintText = Gray(0.86);
-    public static readonly Brush Accent = Rgb(0.04, 0.52, 1.0);
+    /// The app icon's colors: the accretion disk's warm light, the ring's
+    /// cream and the deep-space plate (assets/app-icon.svg).
+    public static readonly Brush Accent = Hex(0xFF, 0xB5, 0x47);
+    public static readonly Brush Plate = Hex(0x1D, 0x1A, 0x2E);
+    public static readonly Brush Cream = Hex(0xF7, 0xF3, 0xEA);
+    /// Text on `Accent`.
+    public static readonly Brush OnAccent = Plate;
+    /// The disk's gradient, along a progress bar.
+    public static readonly Brush Disk = Gradient(Color.FromRgb(0xF2, 0x68, 0x3C), Color.FromRgb(0xFF, 0xB5, 0x47));
     public static readonly Brush Success = Rgb(0.19, 0.82, 0.35);
     public static readonly Brush Warning = Rgb(1.0, 0.62, 0.04);
 
@@ -68,6 +76,16 @@ static class Palette
     static Brush Rgb(double r, double g, double b) =>
         Freeze(Color.FromRgb((byte)Math.Round(r * 255), (byte)Math.Round(g * 255), (byte)Math.Round(b * 255)));
 
+    static Brush Hex(byte r, byte g, byte b) => Freeze(Color.FromRgb(r, g, b));
+
+    /// Left to right across what it fills.
+    static Brush Gradient(Color from, Color to)
+    {
+        var brush = new LinearGradientBrush(from, to, new Point(0, 0.5), new Point(1, 0.5));
+        brush.Freeze();
+        return brush;
+    }
+
     static Brush Freeze(Color color)
     {
         var brush = new SolidColorBrush(color);
@@ -77,15 +95,12 @@ static class Palette
 }
 
 /// Segoe Fluent Icons (Windows 11), falling back to Segoe MDL2 Assets
-/// (Windows 10), standing in for the SF Symbols of the macOS app.
+/// (Windows 10), standing in for the SF Symbols of the macOS app. Devices
+/// have the app's own icons (DeviceGlyph).
 static class Glyphs
 {
     public static readonly FontFamily Font = new("Segoe Fluent Icons, Segoe MDL2 Assets");
 
-    public const string Desktop = "";         // desktopcomputer
-    public const string Laptop = "";          // laptopcomputer
-    public const string Tablet = "";          // ipad
-    public const string Phone = "";           // iphone
     public const string ChevronDown = "";     // chevron.down
     public const string NoNetwork = "";       // wifi.slash
     public const string CheckFilled = "";     // checkmark.circle.fill

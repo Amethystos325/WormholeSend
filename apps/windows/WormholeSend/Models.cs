@@ -7,37 +7,34 @@ namespace WormholeSend;
 /// A paired device, or a LocalSend device (which can't pair; its user
 /// accepts every transfer); `Id` is its certificate fingerprint.
 sealed record Device(
-    string Id, string Name, string Glyph, bool Online, bool IsDefault, bool NeedsRepair = false, bool LocalSend = false)
+    string Id, string Name, DeviceGlyph Glyph, bool Online, bool IsDefault, bool NeedsRepair = false, bool LocalSend = false)
 {
     /// Fake devices for the fake-data mode, demos and tests, named in the
     /// interface's language.
     public static IReadOnlyList<Device> Samples =>
     [
-        new("desk", L.T("书房台式机", "Study PC", "書斎の PC"), Glyphs.Desktop, Online: true, IsDefault: true),
-        new("air", "MacBook Air", Glyphs.Laptop, Online: true, IsDefault: false),
-        new("ipad", "iPad", Glyphs.Tablet, Online: false, IsDefault: false),
+        new("desk", L.T("书房台式机", "Study PC", "書斎の PC"), DeviceGlyph.Desktop, Online: true, IsDefault: true),
+        new("air", "MacBook Air", DeviceGlyph.Laptop, Online: true, IsDefault: false),
+        new("ipad", "iPad", DeviceGlyph.Tablet, Online: false, IsDefault: false),
     ];
 
     public static readonly IReadOnlyList<Device> LocalSendSamples =
     [
-        new("pixel", "Pixel 8", Glyphs.Phone, Online: true, IsDefault: false, LocalSend: true),
+        new("pixel", "Pixel 8", DeviceGlyph.Phone, Online: true, IsDefault: false, LocalSend: true),
     ];
 
     /// An entry of the core's `devices.list`.
     public static Device FromCore(JsonNode node) => new(
         node["fingerprint"]!.GetValue<string>(),
         node["alias"]?.GetValue<string>() ?? "",
-        GlyphFor(node["deviceType"]?.GetValue<string>()),
+        DeviceGlyphs.For(node["deviceType"]?.GetValue<string>()),
         node["online"]?.GetValue<bool>() ?? false,
         node["isDefault"]?.GetValue<bool>() ?? false,
         node["needsRepair"]?.GetValue<bool>() ?? false,
         node["kind"]?.GetValue<string>() == "localsend");
 
-    public static string GlyphFor(string? deviceType) => deviceType switch
-    {
-        "mobile" => Glyphs.Phone,
-        _ => Glyphs.Desktop,
-    };
+    /// Online, and it still trusts this device.
+    public bool Usable => Online && !NeedsRepair;
 }
 
 /// A transfer the island shows. `Files` are the dropped files for a send,

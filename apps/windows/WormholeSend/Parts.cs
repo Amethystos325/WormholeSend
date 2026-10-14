@@ -148,16 +148,20 @@ sealed class MiddleText : Decorator
         VisualTreeHelper.GetDpi(this).PixelsPerDip).WidthIncludingTrailingWhitespace;
 }
 
-/// A device avatar: a circle with the device type, a green dot when online.
+/// A device avatar: the device type on a deep-space plate, a green dot when
+/// online. The device a drop goes to is ringed in the disk's warm light.
 sealed class Avatar : Grid
 {
-    readonly Ellipse circle = new();
+    readonly Ellipse ring;
 
     public Avatar(Device device, double size = 40, bool highlighted = false)
     {
         Width = Height = size;
-        Children.Add(circle);
-        Children.Add(Ui.Icon(device.Glyph, size * 0.45, device.Online ? Palette.Text : Palette.Tertiary));
+        Children.Add(new Ellipse { Fill = Palette.Plate });
+        // A shape's stroke lies inside its bounds, as SwiftUI's strokeBorder.
+        ring = new Ellipse { Stroke = Palette.Accent, StrokeThickness = Math.Max(1.2, size * 0.036) };
+        Children.Add(ring);
+        Children.Add(new DeviceIcon(device.Glyph, size * 0.46, device.Usable ? Palette.Cream : Palette.Tertiary));
         if (device.Online && size >= 36)
         {
             Children.Add(new Ellipse
@@ -176,20 +180,21 @@ sealed class Avatar : Grid
 
     public bool Highlighted
     {
-        set => circle.Fill = value ? Palette.Accent : Palette.Tile;
+        set => ring.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
     }
 }
 
+/// Filled with the accretion disk's gradient, across the part done.
 sealed class ProgressLine : Grid
 {
     readonly Border fill;
     double value;
 
-    public ProgressLine(double height, Brush brush)
+    public ProgressLine(double height)
     {
         Height = height;
         Children.Add(new Border { CornerRadius = new CornerRadius(height / 2), Background = Palette.Track });
-        fill = new Border { CornerRadius = new CornerRadius(height / 2), Background = brush, HorizontalAlignment = HorizontalAlignment.Left };
+        fill = new Border { CornerRadius = new CornerRadius(height / 2), Background = Palette.Disk, HorizontalAlignment = HorizontalAlignment.Left };
         Children.Add(fill);
         SizeChanged += (_, _) => Layout();
     }
@@ -280,9 +285,9 @@ sealed class PillButton : Pressable
 {
     readonly TextBlock label;
 
-    public PillButton(string title, Action action, Brush? fill = null)
+    public PillButton(string title, Action action, Brush? fill = null, Brush? text = null)
     {
-        label = Ui.Text(title, 12, Palette.Text, FontWeights.SemiBold);
+        label = Ui.Text(title, 12, text ?? Palette.Text, FontWeights.SemiBold);
         Typography.SetNumeralAlignment(label, FontNumeralAlignment.Tabular);
         Child = label;
         Padding = new Thickness(12, 3, 12, 4);

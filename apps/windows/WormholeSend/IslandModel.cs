@@ -142,8 +142,6 @@ sealed class IslandModel : INotifyPropertyChanged
         or Phase.PairRequest or Phase.PairWaiting or Phase.ReceiveRequest;
     public bool CanDrop => phase is Phase.Target or Phase.Picker;
 
-    static bool Available(Device device) => device.Online && !device.NeedsRepair;
-
     // MARK: - Drag input
 
     /// A drag began: over a window of this app with `files`, or elsewhere
@@ -235,7 +233,7 @@ sealed class IslandModel : INotifyPropertyChanged
                     return false;
                 }
                 var device = targets[i];
-                if (!Available(device))
+                if (!device.Usable)
                 {
                     Refuse(device);
                     return false;
@@ -254,13 +252,13 @@ sealed class IslandModel : INotifyPropertyChanged
             Phase = new Phase.Unavailable(L.T("只能发送文件", "Only files can be sent", "送信できるのはファイルだけです"));
         else if (targets.Count == 0)
             Phase = new Phase.Unavailable(L.T("还没有配对设备 · 点击配对", "No paired devices · Click to pair", "ペアリングしたデバイスがありません · クリックしてペアリング"));
-        else if (!targets.Any(Available))
+        else if (!targets.Any(d => d.Usable))
             Phase = new Phase.Unavailable(targets.Count == 1
                 ? L.T($"{targets[0].Name} 离线，无法发送", $"{targets[0].Name} is offline", $"{targets[0].Name} はオフラインです")
                 : L.T("没有在线的设备", "No devices online", "オンラインのデバイスがありません"));
         else if (targets.Count == 1)
             Phase = new Phase.Picker(0);
-        else if (DefaultDevice is { } device && Available(device))
+        else if (DefaultDevice is { } device && device.Usable)
         {
             armedForPicker = false;
             Phase = new Phase.Target();
@@ -285,8 +283,8 @@ sealed class IslandModel : INotifyPropertyChanged
                 return localSend.Count == 0
                     ? L.T("还没有配对设备", "No paired devices yet", "ペアリングしたデバイスがありません")
                     : L.T("移到这里选择设备", "Move here to choose a device", "ここに移動してデバイスを選択");
-            if (devices.Count == 1 && !Available(devices[0]) && localSend.Count == 0) return L.T($"{devices[0].Name} 离线，无法发送", $"{devices[0].Name} is offline", $"{devices[0].Name} はオフラインです");
-            if (DefaultDevice is { } device && Available(device))
+            if (devices.Count == 1 && !devices[0].Usable && localSend.Count == 0) return L.T($"{devices[0].Name} 离线，无法发送", $"{devices[0].Name} is offline", $"{devices[0].Name} はオフラインです");
+            if (DefaultDevice is { } device && device.Usable)
                 return L.T($"移到这里发送到 {device.Name}", $"Move here to send to {device.Name}", $"ここに移動して {device.Name} に送信");
             return L.T("默认设备离线，移到这里选其他设备", "Default device offline. Move here to choose another", "既定のデバイスはオフラインです。ここに移動して別のデバイスを選択");
         }
@@ -415,7 +413,7 @@ sealed class IslandModel : INotifyPropertyChanged
             case DeviceUpdated { LocalSend: true } updated:
                 var others = localSend.Where(d => d.Id != updated.Id);
                 LocalSendDevices = updated.Online
-                    ? [.. others, new Device(updated.Id, updated.Alias, Device.GlyphFor(updated.DeviceType), Online: true, IsDefault: false, LocalSend: true)]
+                    ? [.. others, new Device(updated.Id, updated.Alias, DeviceGlyphs.For(updated.DeviceType), Online: true, IsDefault: false, LocalSend: true)]
                     : [.. others];
                 break;
             case ReceiveRequest request:
@@ -472,7 +470,7 @@ sealed class IslandModel : INotifyPropertyChanged
     static double Fraction(long bytes, long total) => total > 0 ? Math.Clamp((double)bytes / total, 0, 1) : 0;
 
     Device DeviceFor(string id, string alias) =>
-        devices.FirstOrDefault(d => d.Id == id) ?? new Device(id, alias, Glyphs.Desktop, Online: true, IsDefault: false);
+        devices.FirstOrDefault(d => d.Id == id) ?? new Device(id, alias, DeviceGlyph.Desktop, Online: true, IsDefault: false);
 
     // MARK: - Receiving
 

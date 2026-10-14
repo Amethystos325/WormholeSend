@@ -64,7 +64,7 @@ public partial class PairWindow : FluentWindow
             var card = new CardControl
             {
                 Margin = new Thickness(0, 0, 0, 6),
-                Icon = new SymbolIcon { Symbol = device.Glyph == Glyphs.Phone ? SymbolRegular.Phone24 : SymbolRegular.Desktop24 },
+                Icon = new DeviceSymbolIcon(device.Glyph),
                 Header = new Wpf.Ui.Controls.TextBlock { Text = device.Name, FontTypography = FontTypography.BodyStrong },
                 Content = pair,
             };

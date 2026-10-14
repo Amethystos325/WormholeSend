@@ -217,6 +217,6 @@ public class LocalSendTests
         var device = Device.FromCore(System.Text.Json.Nodes.JsonNode.Parse(
             """{"fingerprint":"D","alias":"Pixel","deviceType":"mobile","kind":"localsend","online":true,"paired":false}""")!);
         Assert.True(device.LocalSend);
-        Assert.Equal(Glyphs.Phone, device.Glyph);
+        Assert.Equal(DeviceGlyph.Phone, device.Glyph);
     }
 }

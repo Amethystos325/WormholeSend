@@ -9,8 +9,9 @@ using Wpf.Ui.Controls;
 
 namespace WormholeSend;
 
-/// One line of the tray menu. A checked entry shows a check mark where its
-/// icon would be; a dimmed one (an offline device) stays clickable.
+/// One line of the tray menu, with a Segoe glyph or a device's own icon. A
+/// checked entry shows a check mark where its icon would be; a dimmed one
+/// (an offline device) stays clickable.
 sealed record MenuEntry(
     string Text,
     string? Glyph = null,
@@ -18,7 +19,8 @@ sealed record MenuEntry(
     bool Enabled = true,
     bool Checked = false,
     bool Dimmed = false,
-    Func<IReadOnlyList<MenuEntry>>? Submenu = null)
+    Func<IReadOnlyList<MenuEntry>>? Submenu = null,
+    DeviceGlyph? Device = null)
 {
     public static readonly MenuEntry Separator = new("—");
 }
@@ -191,6 +193,12 @@ sealed class TrayMenu : FluentWindow
             };
             iconText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, foreground);
             grid.Children.Add(iconText);
+        }
+        else if (entry.Device is { } device)
+        {
+            var deviceIcon = new DeviceIcon(device, 16);
+            deviceIcon.SetBrushResource(foreground);
+            grid.Children.Add(deviceIcon);
         }
         var text = new System.Windows.Controls.TextBlock
         {

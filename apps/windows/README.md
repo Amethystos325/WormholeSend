@@ -28,6 +28,7 @@ The first run shows a three-step guide (name, the firewall prompt, the first pai
 | `Sounds.cs` | The sounds of delivered, received, failed and a pairing request, at 60 %: `assets/sounds` (made by `make-sounds.py`), the same files as on macOS; 提示音 in the tray menu |
 | `AppController.cs`, `TrayIcon.cs`, `TrayGlyph.cs` | Wiring: screens, core, windows; the tray icon (the black hole of `assets/tray-icon.svg`) |
 | `TrayMenu.cs` | The tray menu (design doc 7.2) in Windows 11's style: acrylic, icons, submenus, keyboard |
+| `DeviceGlyph.cs` | The app's own device icons (`assets/device-icons.svg`, as `DeviceGlyph.swift` on macOS): cream on a deep-space plate in the island, ringed in amber on the device a drop goes to; also in the tray menu, the pairing and settings windows |
 | `AppIcon.cs` | The app icon (`assets/app-icon.ico`, made on the Mac from `app-icon.svg`) in the title bars; also the exe's icon |
 | `StatusLines.cs` | What the one-line states say, and their width: as wide as the text, up to 528; past that the text shrinks to 85 % (as on macOS) |
 | `Lang.cs`, `Strings.cs` | The interface language (English, Chinese, Japanese) and the windows' texts |

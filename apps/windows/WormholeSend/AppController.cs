@@ -359,7 +359,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
         new(L.T("默认设备", "Default device", "既定のデバイス"), Glyphs.Star, Submenu: () => model.Devices.Count == 0
             ? [new MenuEntry(L.T("还没有配对设备", "No paired devices yet", "ペアリングしたデバイスはまだありません"), Enabled: false)]
             : model.Devices.Select(device => new MenuEntry(
-                device.Name, device.Glyph, () => SetDefault(device), Checked: device.IsDefault, Dimmed: !device.Online)).ToList()),
+                device.Name, Action: () => SetDefault(device), Checked: device.IsDefault, Dimmed: !device.Online, Device: device.Glyph)).ToList()),
         new(L.T("配对新设备…", "Pair a new device…", "新しいデバイスとペアリング…"), Glyphs.Link, OpenPairing, Enabled: core is not null),
         new(L.T("打开接收文件夹", "Open the receive folder", "受信フォルダを開く"), Glyphs.FolderOpen, OpenSaveDir, Enabled: settings is not null),
         SoundsEntry(),
@@ -398,7 +398,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
             model.Fake.Receive(model.Devices.FirstOrDefault(d => d.Id == "air") ?? Device.Samples[1]);
         }),
         new("模拟配对请求", Glyphs.Link, () => model.ShowPairRequest("fake", "MacBook Air", "482019")),
-        new("LocalSend", Glyphs.Phone, Submenu: () =>
+        new("LocalSend", Device: DeviceGlyph.Phone, Submenu: () =>
         [
             new("在线设备", Action: () => model.LocalSendDevices = model.LocalSendDevices.Count == 0 ? Device.LocalSendSamples : [],
                 Checked: model.LocalSendDevices.Count > 0),
