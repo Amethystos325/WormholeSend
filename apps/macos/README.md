@@ -35,7 +35,7 @@ To check another language, add `-AppleLanguages "(ja)"` (or `en`, `zh-Hans`) to 
 "build/Wormhole Send.app/Contents/MacOS/WormholeSend" --demo picker [--screen external] [--log]
 ```
 
-States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `unavailable` `sending` `awaiting` `queued` `queued-compact` `done` `failed` `declined` `refused` `receiving` `receiving-localsend` `received` `interrupted` `refused-repair` `pair-request` `pair-waiting` `receive-request` `receive-text` `notice` `notice-copied` `notice-failed`. `--log` prints every state change to stderr.
+States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `unavailable` `sending` `awaiting` `queued` `queued-compact` `done` `failed` `declined` `refused` `no-access` `receiving` `receiving-localsend` `received` `interrupted` `refused-repair` `pair-request` `pair-waiting` `receive-request` `receive-text` `notice` `notice-copied` `notice-failed`. `--log` prints every state change to stderr.
 
 ## Manual checklist
 
@@ -47,6 +47,7 @@ States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `u
 - [ ] Coming up from below to the default device: passing through the strip position does not open the device list by mistake
 - [ ] Release over an offline device: shows "离线，未发送" and the file flies back
 - [ ] Drag out of the island and release: the island collapses and the file flies back
+- [ ] Drag a file out of a WeChat chat without Full Disk Access: "读取 微信 的文件需要完全磁盘访问权限" (failed.wav plays), the file flies back and nothing is sent; "打开设置" opens Privacy & Security › Full Disk Access. With the access on, the same drag sends. (WeChat drags out a path into its own container, which macOS 14+ keeps from other apps; an ad-hoc signed build has to be switched on again after each rebuild.)
 - [ ] Default device offline (the other side quits): dragging in opens the device list right away
 - [ ] With 1 paired device: a single large target; with 0 it shows "还没有配对设备"
 - [ ] The receiver is busy receiving from another device: the queued state collapses to a small badge beside the camera after 3 s; when its turn comes it sends automatically

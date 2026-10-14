@@ -6,10 +6,10 @@ import AppKit
 ///
 /// Phases: hint, target, picker, picker-offline, picker-localsend, single,
 /// unavailable, sending, awaiting, queued, queued-compact, done, failed,
-/// declined, refused, receiving, receiving-localsend, received, interrupted,
-/// refused-repair, pair-request, pair-waiting, receive-request, receive-text,
-/// notice, notice-copied, notice-failed. Sample data; the core is not
-/// started.
+/// declined, refused, no-access, receiving, receiving-localsend, received,
+/// interrupted, refused-repair, pair-request, pair-waiting, receive-request,
+/// receive-text, notice, notice-copied, notice-failed. Sample data; the core
+/// is not started.
 @MainActor
 enum Demo {
     static func apply(to model: IslandModel, place: @escaping (NSScreen) -> Void) {
@@ -70,6 +70,7 @@ enum Demo {
                 model.transfer = Transfer(device: Device.localSendSample, files: files, label: "季度报告.pdf")
                 model.phase = .failed(tr("Pixel 8 拒绝了接收", "Pixel 8 declined", "Pixel 8 が受信を拒否しました"), canRetry: false)
             case "refused": model.phase = .refused(Device.samples[2].notSent)
+            case "no-access": model.phase = .noAccess(app: tr("微信", "WeChat", "WeChat"))
             case "refused-repair":
                 var device = Device.samples[1]
                 device.needsRepair = true

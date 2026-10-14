@@ -7,6 +7,8 @@ enum Spec {
     static let refusedHold: Duration = .milliseconds(1800)
     static let failedHold: Duration = .seconds(4)
     static let receivedHold: Duration = .seconds(5)
+    /// macOS only: long enough to read the reason and reach the button.
+    static let noAccessHold: Duration = .seconds(8)
     /// The queued state collapses to its compact form after this long.
     static let queuedHint: Duration = .seconds(3)
 

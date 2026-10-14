@@ -26,6 +26,10 @@ final class IslandModel {
         case failed(String, canRetry: Bool)
         /// Released over a device that can't take files now: "iPad 离线，未发送".
         case refused(String)
+        /// The dropped files are another app's data, which macOS keeps from
+        /// this app (see `AppData`): names that app when known and opens Full
+        /// Disk Access. Nothing was sent.
+        case noAccess(app: String?)
         case receiving
         case received
         /// An incoming transfer stopped: "对方取消了发送" or "连接中断".
@@ -181,8 +185,7 @@ final class IslandModel {
         switch phase {
         case .target:
             guard let device = defaultDevice else { return false }
-            send(files, to: device)
-            return true
+            return sendIfReadable(files, to: device)
         case .picker(let hot):
             guard let index = devices.count == 1 ? 0 : hot else {
                 phase = .idle
@@ -193,8 +196,7 @@ final class IslandModel {
                 refuse(device)
                 return false
             }
-            send(files, to: device)
-            return true
+            return sendIfReadable(files, to: device)
         default:
             return false
         }
@@ -284,6 +286,27 @@ final class IslandModel {
         case .success(let id): transfer?.id = id
         case .failure(let failure): fail(failure.message)
         }
+    }
+
+    /// Sends unless another app's data protection would only let the upload
+    /// fail halfway; then says why, and the files fly back.
+    private func sendIfReadable(_ files: [URL], to device: Device) -> Bool {
+        if let blocked = AppData.firstBlocked(files) {
+            cancelTimers()
+            Sound.failed.play()
+            phase = .noAccess(app: AppData.appName(owning: blocked))
+            schedule(after: Spec.noAccessHold) { [weak self] in
+                if case .noAccess = self?.phase { self?.settle() }
+            }
+            return false
+        }
+        send(files, to: device)
+        return true
+    }
+
+    func openFullDiskAccess() {
+        AppData.openSettings()
+        settle()
     }
 
     private func refuse(_ device: Device) {
@@ -442,7 +465,7 @@ final class IslandModel {
     /// Whether an incoming transfer may take over the island now.
     private var canShowIncoming: Bool {
         switch phase {
-        case .idle, .done, .refused, .failed, .received, .interrupted, .notice, .receiving: true
+        case .idle, .done, .refused, .noAccess, .failed, .received, .interrupted, .notice, .receiving: true
         default: false
         }
     }
@@ -680,6 +703,8 @@ final class IslandModel {
         case .sending: content = CGSize(width: 340, height: 56)
         case .queued, .awaiting: content = CGSize(width: 340, height: 40)
         case .refused(let text): content = CGSize(width: fitting(text, size: 13, base: 340, extra: 70), height: 28)
+        case .noAccess(let app):
+            content = CGSize(width: fitting(Self.noAccessText(app: app), size: 13, base: 340, extra: 170), height: 28)
         case .failed(let reason, let canRetry):
             content = CGSize(width: fitting(Self.failedText(reason), size: 13, base: 340, extra: canRetry ? 140 : 70), height: 28)
         case .notice(let text, let detail, _):
@@ -702,6 +727,14 @@ final class IslandModel {
     /// "发送失败：网络中断".
     static func failedText(_ reason: String) -> String {
         tr("发送失败：\(reason)", "Couldn't send: \(reason)", "送信失敗：\(reason)")
+    }
+
+    /// "读取 微信 的文件需要完全磁盘访问权限".
+    static func noAccessText(app: String?) -> String {
+        guard let app else {
+            return tr("读取这个文件需要完全磁盘访问权限", "Sending this file needs Full Disk Access", "このファイルを送るにはフルディスクアクセスが必要です")
+        }
+        return tr("读取 \(app) 的文件需要完全磁盘访问权限", "Sending files from \(app) needs Full Disk Access", "\(app) のファイルを送るにはフルディスクアクセスが必要です")
     }
 
     /// Wide enough for a line of text: at least `base`, at most the

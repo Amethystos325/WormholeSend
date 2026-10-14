@@ -74,7 +74,7 @@ struct IslandView: View {
     /// Phases whose content is one line.
     private var isSingleLine: Bool {
         switch model.phase {
-        case .hint, .unavailable, .done, .failed, .refused, .interrupted, .pairWaiting, .notice: true
+        case .hint, .unavailable, .done, .failed, .refused, .noAccess, .interrupted, .pairWaiting, .notice: true
         default: false
         }
     }
@@ -97,6 +97,7 @@ struct IslandView: View {
         case .done: "done"
         case .failed: "failed"
         case .refused: "refused"
+        case .noAccess: "no-access"
         case .receiving: "receiving"
         case .received: "received"
         case .interrupted: "interrupted"
@@ -154,6 +155,8 @@ struct IslandView: View {
             FailedContent(reason: reason, canRetry: canRetry, onRetry: model.retry)
         case .refused(let text):
             StatusLine(symbol: "nosign", color: Palette.warning, text: text)
+        case .noAccess(let app):
+            NoAccessContent(text: IslandModel.noAccessText(app: app), onOpenSettings: model.openFullDiskAccess)
         case .receiving:
             if let transfer = model.transfer {
                 ReceivingContent(transfer: transfer, waiting: model.waitingCount)
@@ -648,6 +651,27 @@ private struct FailedContent: View {
                 Button(tr("重试", "Retry", "再試行"), action: onRetry)
                     .buttonStyle(PillButtonStyle())
             }
+        }
+    }
+}
+
+private struct NoAccessContent: View {
+    let text: String
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(Palette.warning)
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Palette.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer()
+            Button(tr("打开设置", "Open Settings", "設定を開く"), action: onOpenSettings)
+                .buttonStyle(PillButtonStyle())
         }
     }
 }
