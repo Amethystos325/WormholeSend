@@ -9,6 +9,7 @@ LocalSend devices (1.18+) can't pair, but files go both ways, confirmed by the r
 ```bash
 ./scripts/bundle.sh          # builds the core (scripts/build-core.sh) and build/Wormhole Send.app
 open "build/Wormhole Send.app"
+./scripts/bundle.sh --install  # also copies it to /Applications, restarting the running app
 ```
 
 The bundle is signed with `$WHS_SIGN_IDENTITY` if set, else the first valid "Apple Development" certificate in the keychain, else ad-hoc. With a certificate macOS knows the app by its bundle ID and team, so Full Disk Access and Local Network stay granted across rebuilds; an ad-hoc signature is new with every build, and both have to be granted again. This is for your own Mac: Gatekeeper still rejects the app elsewhere (that needs Developer ID and notarization).
