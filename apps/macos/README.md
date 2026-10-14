@@ -45,6 +45,7 @@ States: `hint` `target` `picker` `picker-offline` `picker-localsend` `single` `u
 - [ ] Start dragging a file in Finder: the island shows the hint "移到这里发送到 书房台式机"
 - [ ] Drag into the notch and release right away: sending → delivered (sent.wav plays), then it collapses after 1.5 s
 - [ ] The target names what is dragged: "登记表.docx", "文件夹 设计稿", "登记表.docx 等 2 个文件", "设计稿 等 2 个文件夹", "… 等 3 个文件或文件夹"
+- [ ] Drag two files and a folder from VS Code's explorer: the hint shows and the island names all three; releasing sends them. (Apps built on Chromium give the paths as text, one per line, and at most one file URL; `--log` prints what a drag that isn't files carries.)
 - [ ] While sending a large file: "945 MB / 2.1 GB · 45 MB/s" under the bar; for a folder, "3 / 12 个文件 · 45 MB/s"; the speed shows after about a second
 - [ ] After the island opens, drag down into the "其他设备" strip: the device list opens; slide to another device and release to send to it
 - [ ] Coming up from below to the default device: passing through the strip position does not open the device list by mistake

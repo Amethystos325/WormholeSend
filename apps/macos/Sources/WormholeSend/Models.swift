@@ -208,3 +208,42 @@ enum FileLabel {
         return values?.isDirectory == true && values?.isPackage != true
     }
 }
+
+/// The files a drag carries. Finder gives file URLs; apps built on Chromium,
+/// such as VS Code dragging from its explorer, give at most one: the paths
+/// come as text, one per line, with "~" for the home folder. Text counts as
+/// files when every line is a full path (or a file: URL) of a file or folder
+/// that exists, the same rule as on Windows.
+enum DragPaths {
+    static func of(_ pasteboard: NSPasteboard) -> [URL]? {
+        let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        // VS Code's one file URL is only the first of what is dragged.
+        if let text = pasteboard.string(forType: .string),
+           let paths = fromText(text, exists: { FileManager.default.fileExists(atPath: $0) }),
+           paths.count > urls.count {
+            return paths
+        }
+        return urls.isEmpty ? nil : urls
+    }
+
+    static func fromText(_ text: String, exists: (String) -> Bool) -> [URL]? {
+        let lines = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return nil }
+        var paths: [URL] = []
+        for line in lines {
+            var path = line.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            if path.lowercased().hasPrefix("file:") {
+                guard let url = URL(string: path), url.isFileURL else { return nil }
+                path = url.path
+            }
+            path = (path as NSString).expandingTildeInPath
+            guard path.hasPrefix("/"), exists(path) else { return nil }
+            paths.append(URL(fileURLWithPath: path))
+        }
+        return paths
+    }
+}

@@ -45,7 +45,8 @@ final class DropHostingView: NSHostingView<IslandView> {
     init(model: IslandModel) {
         self.model = model
         super.init(rootView: IslandView(model: model))
-        registerForDraggedTypes([.fileURL])
+        // Text too: VS Code gives the paths it drags as text (DragPaths).
+        registerForDraggedTypes([.fileURL, .string])
     }
 
     @available(*, unavailable)
@@ -78,10 +79,7 @@ final class DropHostingView: NSHostingView<IslandView> {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        let urls = sender.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        return model.drop(urls)
+        model.drop(DragPaths.of(sender.draggingPasteboard) ?? [])
     }
 
     private func track(_ sender: any NSDraggingInfo) -> NSDragOperation {

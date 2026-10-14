@@ -49,6 +49,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.onPhaseChange = { [weak self] phase in self?.phaseChanged(phase) }
         dragMonitor.onStart = { [weak self] urls, location in self?.dragStarted(urls, at: location) }
         dragMonitor.onEnd = { [weak self] in self?.model.dragEnded() }
+        dragMonitor.onOther = { [weak self] types in
+            self?.log("drag of \(types.map(\.rawValue).joined(separator: ", "))")
+        }
         dragMonitor.start()
 
         NotificationCenter.default.addObserver(

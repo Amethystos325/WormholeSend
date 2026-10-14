@@ -4,13 +4,15 @@ import AppKit
 ///
 /// A global mouse-down monitor (which needs no Accessibility permission)
 /// starts polling while the button is held: a change of the drag
-/// pasteboard carrying file URLs means a file drag began; the button going
-/// up ends it. Polling the button state instead of waiting for mouse-up
-/// events also works while another app runs its drag session.
+/// pasteboard carrying files (`DragPaths`) means a file drag began; the
+/// button going up ends it. Polling the button state instead of waiting for
+/// mouse-up events also works while another app runs its drag session.
 @MainActor
 final class DragMonitor {
     var onStart: (([URL], NSPoint) -> Void)?
     var onEnd: (() -> Void)?
+    /// A drag of something else began, with what it carries (for `--log`).
+    var onOther: (([NSPasteboard.PasteboardType]) -> Void)?
 
     private var monitor: Any?
     private var poll: Task<Void, Never>?
@@ -57,10 +59,10 @@ final class DragMonitor {
         let pasteboard = NSPasteboard(name: .drag)
         guard pasteboard.changeCount != changeCount else { return true }
         changeCount = pasteboard.changeCount
-        let urls = pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        guard !urls.isEmpty else { return true }
+        guard let urls = DragPaths.of(pasteboard) else {
+            onOther?(pasteboard.types ?? [])
+            return true
+        }
         isDragging = true
         onStart?(urls, NSEvent.mouseLocation)
         return true
