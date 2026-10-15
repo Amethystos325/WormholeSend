@@ -16,6 +16,24 @@ dotnet run --project WormholeSend
 
 The first run shows a three-step guide (name, the firewall prompt, the first pairing) before the services start. When Windows asks about the firewall, allow private networks. Data lives in `%APPDATA%\WormholeSend`, shared with `whs`.
 
+## Installer
+
+Needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) as well (`winget install JRSoftware.InnoSetup`). From this directory:
+
+```powershell
+.\installer\build.ps1                  # -SkipCoreBuild uses the wormhole.dll already built
+```
+
+It publishes the app self-contained (the .NET runtime included, so nothing else to install) to `build\publish` and compiles `installer\WormholeSend.iss` into `build\WormholeSend-<version>-setup-x64.exe`, about 60 MB. The version is the csproj's `<Version>`. The setup is in English, Chinese or Japanese, by the Windows display language; Inno Setup ships Chinese only as an unofficial translation, so `installer\ChineseSimplified.isl` is a copy of it.
+
+The setup asks for administrator rights and installs to `Program Files\Wormhole Send`. It:
+
+- adds inbound firewall rules for `WormholeSend.exe` on private networks: TCP 53320 and 53321 (transfers and control) and UDP 53317 (discovery, LocalSend's port), so Windows doesn't ask on the first run. With another port in `settings.json` (or `--port`), Windows asks again.
+- offers Start with Windows, checked: the same Run value as the switch in the settings.
+- closes a running Wormhole Send before replacing its files, and offers to start it at the end.
+
+Uninstalling quits the app, removes the firewall rules and the Run value (if it points to the installed app), and leaves the data in `%APPDATA%\WormholeSend`. The installer is not code-signed yet, so SmartScreen warns on other computers.
+
 ## What's where
 
 | File | |

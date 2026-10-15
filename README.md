@@ -46,7 +46,7 @@ The Rust core handles identity, pairing, trust, discovery, sending, receiving an
 
 ## Status
 
-Wormhole Send is in early development. Both apps work end to end, but there are no installers or signed releases yet, so you build it from source. See the [roadmap](docs/roadmap.md) for what's missing.
+Wormhole Send is in early development. Both apps work end to end, but there are no signed releases yet, so you build it from source. On Windows that can be an installer you build yourself. See the [roadmap](docs/roadmap.md) for what's missing.
 
 | Platform | Requirements |
 | --- | --- |
@@ -71,6 +71,7 @@ open "build/Wormhole Send.app"
 git config --global core.longpaths true   # a LocalSend dependency has paths over 260 characters
 cd apps/windows
 dotnet run --project WormholeSend
+.\installer\build.ps1                  # or an installer, build\WormholeSend-<version>-setup-x64.exe (needs Inno Setup 6)
 ```
 
 **Command line** (`whs`, for trying the core without a UI)

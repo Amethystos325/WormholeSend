@@ -4,7 +4,7 @@ What's planned but not built yet.
 
 ## Both platforms
 
-- Installers and signed releases.
+- Signed releases, and an installer for macOS.
 
 ## macOS
 
@@ -15,10 +15,7 @@ What's planned but not built yet.
 
 ## Windows
 
-- An installer, using Inno Setup. It should:
-  - add firewall rules for TCP 53320, TCP 53321 and UDP 53317 (discovery, LocalSend's port)
-  - use `assets/app-icon.ico`
-  - be code-signed, so SmartScreen doesn't block it
+- Code-signing the installer (`apps/windows/installer`), so SmartScreen doesn't block it.
 - Protecting the private key in `identity.pem` with DPAPI.
 - A "sending" hint when you drag onto the island while a send is in progress. For now, that drag is ignored.
 - Testing on real hardware with a second monitor, at 150% scaling, with monitors at different scaling, and with a Mac on the other end.

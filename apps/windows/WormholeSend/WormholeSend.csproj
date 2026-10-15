@@ -11,6 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>WormholeSend</AssemblyName>
     <Product>Wormhole Send</Product>
+    <!-- The installer takes its version from here (installer/build.ps1). -->
+    <Version>1.0.0</Version>
     <!-- assets/app-icon.ico, also in the title bars (AppIcon.cs). -->
     <ApplicationIcon>..\..\..\assets\app-icon.ico</ApplicationIcon>
     <!-- For the source-generated P/Invoke in Native.cs and Core.cs. -->
