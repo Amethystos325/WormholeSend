@@ -2,16 +2,12 @@
 
 What's planned but not built yet.
 
-## Both platforms
-
-- Signed releases, and an installer for macOS.
-
 ## macOS
 
 - A settings window. For now, settings live in the menu bar menu.
 - A pairing step and animation in the first-run welcome.
 - Storing the private key in the Keychain instead of `identity.pem`.
-- Developer ID signing and notarization, so the app runs on other Macs without Gatekeeper warnings.
+- Developer ID signing and notarization, so the app runs on other Macs without Gatekeeper warnings. `scripts/release.sh` signs ad-hoc for now.
 
 ## Windows
 

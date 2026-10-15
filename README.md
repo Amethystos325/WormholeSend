@@ -46,7 +46,7 @@ The Rust core handles identity, pairing, trust, discovery, sending, receiving an
 
 ## Status
 
-Wormhole Send is in early development. Both apps work end to end, but there are no signed releases yet, so you build it from source. On Windows that can be an installer you build yourself. See the [roadmap](docs/roadmap.md) for what's missing.
+Wormhole Send is in early development. Both apps work end to end, but there are no signed releases yet. The [releases](https://github.com/Amethystos325/WormholeSend/releases) have a Windows installer and a macOS disk image, both unsigned, or you build it from source. See the [roadmap](docs/roadmap.md) for what's missing.
 
 | Platform | Requirements |
 | --- | --- |
@@ -63,6 +63,7 @@ You need [Rust](https://rustup.rs) for every target.
 cd apps/macos
 ./scripts/bundle.sh            # builds the core and build/Wormhole Send.app
 open "build/Wormhole Send.app"
+./scripts/release.sh           # or a disk image, build/WormholeSend-<version>-macos-universal.dmg
 ```
 
 **Windows app** (needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) and Visual Studio Build Tools with "Desktop development with C++")

@@ -14,6 +14,14 @@ open "build/Wormhole Send.app"
 
 The bundle is signed with `$WHS_SIGN_IDENTITY` if set, else the first valid "Apple Development" certificate in the keychain, else ad-hoc. With a certificate macOS knows the app by its bundle ID and team, so Full Disk Access and Local Network stay granted across rebuilds; an ad-hoc signature is new with every build, and both have to be granted again. This is for your own Mac: Gatekeeper still rejects the app elsewhere (that needs Developer ID and notarization).
 
+## Release
+
+```bash
+./scripts/release.sh           # build/WormholeSend-<version>-macos-universal.dmg, and its SHA-256
+```
+
+It builds the app for arm64 and x86_64 in one binary (`bundle.sh release --universal`; first run `rustup target add x86_64-apple-darwin`), signs it ad-hoc and puts it in a disk image next to a link to `/Applications`. The version is `CFBundleShortVersionString` in `Resources/Info.plist`. Ad-hoc rather than with your certificate: an Apple Development signature carries your name and email, and other Macs don't trust it anyway. Without Developer ID and notarization, Gatekeeper blocks the first launch ("Apple could not verify…"); it opens after Open Anyway in System Settings › Privacy & Security. Being ad-hoc, every new version has to be allowed there again, and Full Disk Access and Local Network granted again.
+
 The app icon is `Resources/AppIcon.icns`, rendered from `assets/app-icon.svg` by `assets/make-icons.sh` (which also writes the Windows `assets/app-icon.ico`; it needs Google Chrome to rasterize the SVG). Building the core needs Rust. `scripts/build-core.sh --universal` produces arm64 + x86_64 (first run `rustup target add aarch64-apple-darwin x86_64-apple-darwin`).
 
 To test against `whs` on the same Mac, give the app its own data directory and port: `"build/Wormhole Send.app/Contents/MacOS/WormholeSend" --home /tmp/app --port 53340 --log`.

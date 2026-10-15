@@ -5,26 +5,31 @@
 # rebuilds, so Full Disk Access and Local Network stay granted; an ad-hoc
 # signature is new with every build.
 #
-#     ./scripts/bundle.sh [debug|release] [--install]
+#     ./scripts/bundle.sh [debug|release] [--universal] [--install]
 #
+# --universal builds for arm64 and x86_64 in one binary (needs both rustup
+# targets); otherwise it's for this Mac's architecture only.
 # --install then copies it to /Applications, quitting the running app first
 # and starting the installed one again.
 set -e
 cd "$(dirname "$0")/.."
 CONFIG=release
 INSTALL=
+UNIVERSAL=
+ARCHS=
 for arg in "$@"; do
   case "$arg" in
     --install) INSTALL=1 ;;
+    --universal) UNIVERSAL=--universal; ARCHS="--arch arm64 --arch x86_64" ;;
     *) CONFIG="$arg" ;;
   esac
 done
-./scripts/build-core.sh
-swift build -c "$CONFIG"
+./scripts/build-core.sh $UNIVERSAL
+swift build -c "$CONFIG" $ARCHS
 APP="build/Wormhole Send.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$(swift build -c "$CONFIG" --show-bin-path)/WormholeSend" "$APP/Contents/MacOS/"
+cp "$(swift build -c "$CONFIG" $ARCHS --show-bin-path)/WormholeSend" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
 cp Resources/AppIcon.icns ../../assets/sounds/*.wav "$APP/Contents/Resources/"
 # One folder per language: macOS picks the app's language from these (Language
