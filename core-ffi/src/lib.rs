@@ -1,5 +1,5 @@
 //! The C interface of the Wormhole Send core, shared by the macOS and
-//! Windows apps (design doc, section 4.2): `wh_start`, `wh_command`,
+//! Windows apps: `wh_start`, `wh_command`,
 //! `wh_free_string`, `wh_stop`, plus `wh_version`. Commands and results are
 //! JSON; events reach the app through one callback, always on the same
 //! thread, one at a time. `include/wormhole.h` is generated from this file.

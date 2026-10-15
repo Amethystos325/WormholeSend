@@ -1,4 +1,4 @@
-//! The receive queue (design doc, section 5.4). The transfer service takes
+//! The receive queue. The transfer service takes
 //! one upload session at a time; senders take a ticket from the control
 //! service first and wait their turn, first come first served.
 

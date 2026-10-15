@@ -2,8 +2,8 @@ using System.Windows;
 
 namespace WormholeSend.Tests;
 
-/// The state machine of design doc section 2.1, driven the way the windows
-/// drive it: drags enter through the sensor at the top center.
+/// The island's state machine, driven the way the windows drive it: drags
+/// enter through the sensor at the top center.
 public class IslandModelTests
 {
     const double PanelWidth = 560;

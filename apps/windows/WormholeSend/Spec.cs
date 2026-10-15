@@ -3,7 +3,7 @@ using System.Windows.Media;
 
 namespace WormholeSend;
 
-/// Timings and sizes from the interaction spec (design doc, section 2.3).
+/// The island's timings and sizes.
 /// Both apps use the same values (apps/macos/.../Spec.swift). Sizes are in
 /// device-independent pixels, scaled per monitor.
 static class Spec

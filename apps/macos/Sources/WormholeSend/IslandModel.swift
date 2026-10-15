@@ -1,7 +1,7 @@
 import AppKit
 import Observation
 
-/// The island's state machine (design doc, section 2.1), driven by drag
+/// The island's state machine, driven by drag
 /// events from the panel and the drag monitor, and by the core's transfer
 /// events.
 @MainActor

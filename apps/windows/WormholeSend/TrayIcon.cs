@@ -6,7 +6,7 @@ namespace WormholeSend;
 
 /// The tray icon. Its menu (TrayMenu) is built by the owner each time it
 /// opens, so the check marks are current. While a send waits in the
-/// receiver's queue the icon carries an orange dot (design doc 2.1).
+/// receiver's queue the icon carries an orange dot.
 sealed class TrayIcon : IDisposable
 {
     readonly Forms.NotifyIcon icon;

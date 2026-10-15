@@ -382,7 +382,7 @@ sealed class ReceivingContent : PhaseContent
     {
         bar.Value = model.Progress;
         percent.Text = Ui.FormatPercent(model.Progress);
-        // Design doc 2.2: senders waiting in this device's queue.
+        // Senders waiting in this device's queue.
         detail.Text = model.WaitingCount > 0
             ? L.T($"还有 {model.WaitingCount} 个设备等待发送", $"{model.WaitingCount} more {L.Plural(model.WaitingCount, "device", "devices")} waiting to send", $"ほかに {model.WaitingCount} 台が送信待ちです")
             : L.T($"已配对 · 自动保存到 {model.SaveDirLabel}", $"Paired · Saving to {model.SaveDirLabel}", $"ペアリング済み · {model.SaveDirLabel} に保存");

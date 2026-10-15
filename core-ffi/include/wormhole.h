@@ -1,7 +1,7 @@
 /*
- * Wormhole Send core: the C interface shared by the macOS and Windows apps
- * (design doc, section 4.2). Commands, results and events are JSON; strings
- * are UTF-8 and NUL-terminated. See core-ffi/README.md.
+ * Wormhole Send core: the C interface shared by the macOS and Windows apps.
+ * Commands, results and events are JSON; strings are UTF-8 and
+ * NUL-terminated. See core-ffi/README.md.
  */
 
 #ifndef WORMHOLE_H

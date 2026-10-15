@@ -4,7 +4,7 @@ using Wpf.Ui.Controls;
 
 namespace WormholeSend;
 
-/// The first-run guide (design doc 7.3): confirm the name, explain the
+/// The first-run guide: confirm the name, explain the
 /// firewall prompt before the services start (and trigger it), pair the
 /// first device. Shown once, before the core has created an identity.
 public partial class WelcomeWindow : FluentWindow

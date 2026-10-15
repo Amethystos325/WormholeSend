@@ -9,7 +9,7 @@ using Wpf.Ui.Controls;
 
 namespace WormholeSend;
 
-/// The settings window (design doc 7.1): name, save location, default
+/// The settings window: name, save location, default
 /// device, paired devices, start with Windows, language.
 public partial class SettingsWindow : FluentWindow
 {

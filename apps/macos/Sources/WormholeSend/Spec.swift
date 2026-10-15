@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Timings and sizes from the interaction spec (design doc, section 2.3).
+/// The island's timings and sizes.
 /// Both apps use the same values.
 enum Spec {
     static let doneHold: Duration = .milliseconds(1500)

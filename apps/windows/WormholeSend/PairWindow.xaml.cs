@@ -6,7 +6,7 @@ using Wpf.Ui.Controls;
 
 namespace WormholeSend;
 
-/// Pairing with a nearby device (design doc 3.1): pick it, compare the
+/// Pairing with a nearby device: pick it, compare the
 /// 6-digit code both screens show, confirm on both sides.
 public partial class PairWindow : FluentWindow
 {

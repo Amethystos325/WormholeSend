@@ -6,7 +6,7 @@ using System.Windows.Threading;
 
 namespace WormholeSend;
 
-/// The island's state machine (design doc, section 2.1), driven by drag
+/// The island's state machine, driven by drag
 /// events from the windows and by core events. The drag handling is a port
 /// of apps/macos/.../IslandModel.swift: keep the two in step.
 sealed class IslandModel : INotifyPropertyChanged

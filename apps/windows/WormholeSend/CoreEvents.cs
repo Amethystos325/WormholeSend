@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace WormholeSend;
 
-/// The core's events (core/src/event.rs, design doc 4.2). The fake backend
+/// The core's events (core/src/event.rs). The fake backend
 /// emits the same ones, so the island behaves alike with and without a core.
 abstract record CoreEvent
 {

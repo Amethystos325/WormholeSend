@@ -353,7 +353,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = false });
     }
 
-    /// Design doc 7.2.
+    /// The tray menu.
     IReadOnlyList<MenuEntry> BuildMenu() =>
     [
         new(L.T("默认设备", "Default device", "既定のデバイス"), Glyphs.Star, Submenu: () => model.Devices.Count == 0

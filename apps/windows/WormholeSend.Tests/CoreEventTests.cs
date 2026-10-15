@@ -19,7 +19,7 @@ sealed class RecordingTransfers : ITransfers
     public string Retry(string transferId) => Send(Sent[^1].Device, Sent[^1].Files);
 }
 
-/// How the island follows the core's events (design doc 2.1, 2.2, 4.2).
+/// How the island follows the core's events.
 public class CoreEventTests
 {
     static readonly string[] Files = [@"C:\Users\Public\Quarterly report.pdf"];

@@ -1,8 +1,8 @@
 namespace WormholeSend;
 
-/// The island's phases (design doc, section 2.1), the same as `Phase` in
+/// The island's phases, the same as `Phase` in
 /// apps/macos/.../IslandModel.swift, plus the pairing request and the
-/// short notices the macOS spike doesn't have yet.
+/// short notices the macOS app doesn't have yet.
 abstract record Phase
 {
     public sealed record Idle() : Phase;

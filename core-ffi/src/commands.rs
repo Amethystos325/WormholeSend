@@ -1,4 +1,4 @@
-//! The commands of `wh_command` (design doc, section 4.2).
+//! The commands of `wh_command`, documented in core-ffi/README.md.
 
 use crate::Shared;
 use anyhow::{Context, anyhow, bail};

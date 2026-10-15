@@ -1,4 +1,4 @@
-//! Two-way pairing with a 6-digit code, and unpairing (design doc, section 3).
+//! Two-way pairing with a 6-digit code, and unpairing.
 //!
 //! ① The initiator A sends its commitment SHA-256(n_A); ② the responder B
 //! answers with n_B; ③ A reveals n_A and B checks it against the commitment.
