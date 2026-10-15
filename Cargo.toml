@@ -5,6 +5,8 @@ members = ["core", "core-ffi", "cli"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/Amethystos325/Wormhole"
 
 [workspace.dependencies]
 # Pinned to a known commit: the crate is not published and its API may change upstream.

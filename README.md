@@ -111,3 +111,7 @@ See the [CLI guide](docs/cli.md) for every command, LocalSend interop, ports and
 ## Acknowledgements
 
 The transfer layer uses the Rust core of [LocalSend](https://github.com/localsend/localsend) (Apache-2.0). `core/src/identity.rs` and parts of `core/src/send.rs` are adapted from the LocalSend CLI.
+
+## License
+
+Wormhole Send is licensed under the [Apache License 2.0](LICENSE).

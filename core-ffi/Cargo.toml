@@ -2,6 +2,8 @@
 name = "wormhole-ffi"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 # wormhole.dll (P/Invoke from the Windows app), libwormhole.a (linked into
