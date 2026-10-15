@@ -4,6 +4,10 @@ Drop a file on your Mac's notch, or on the island at the top of a Windows screen
 
 Wormhole Send is a local-network file transfer app for macOS and Windows. Pair two computers once, and from then on, sending is a single drag. It also exchanges files with [LocalSend](https://localsend.org) on phones and other computers.
 
+<p align="center">
+  <img src="docs/images/target.png" width="371" alt="The island under the notch while dragging a file: Release to send to Study Desktop">
+</p>
+
 ## Features
 
 - **Drag to send.** Start dragging a file and a hint appears at the top of the screen. Drop it there to send it to your default device, or drag down into the list to pick another device.
@@ -13,6 +17,14 @@ Wormhole Send is a local-network file transfer app for macOS and Windows. Pair t
 - **Queues instead of failing.** If the receiver is busy receiving from another device, your send waits its turn and starts automatically.
 - **Native on both platforms.** On macOS, a SwiftUI and AppKit app that lives in the notch, or in a floating capsule on an external display. On Windows, a WPF app with a top-of-screen island and a tray menu.
 - **English, Chinese and Japanese.** The interface follows the system language, and you can switch it from the menu.
+
+## Screenshots
+
+On macOS:
+
+| Drag down to choose another device | Sending | A LocalSend phone asks to send |
+| :---: | :---: | :---: |
+| <img src="docs/images/picker.png" width="300" alt="Device picker with three devices"> | <img src="docs/images/sending.png" width="300" alt="Sending progress: 945 MB of 2.1 GB at 45 MB/s"> | <img src="docs/images/receive-request.png" width="300" alt="Pixel 8 wants to send three files, with Decline and Accept buttons"> |
 
 ## How it works
 
@@ -93,6 +105,7 @@ See the [CLI guide](docs/cli.md) for every command, LocalSend interop, ports and
 | [`apps/macos/`](apps/macos) | The macOS app (SwiftUI + AppKit) |
 | [`apps/windows/`](apps/windows) | The Windows app (WPF) and its tests |
 | [`assets/`](assets) | Icons and sounds, with the scripts that generate them |
+| [`docs/`](docs) | The CLI guide, the roadmap and the README's screenshots |
 | [`tools/`](tools) | `translations.py`, which prints every interface string in all three languages |
 
 ## Acknowledgements
