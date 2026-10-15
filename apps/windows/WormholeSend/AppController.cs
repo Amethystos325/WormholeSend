@@ -216,7 +216,7 @@ sealed class AppController(Options options) : IDragTarget, ISession
         SettingsChanged?.Invoke();
     }
 
-    /// "下载\Wormhole Send" for the default, else the path.
+    /// "Downloads\Wormhole Send" for the default, else the path.
     static string SaveDirLabel(string dir)
     {
         var downloads = Native.KnownFolder(Native.FOLDERID_Downloads);
@@ -378,34 +378,34 @@ sealed class AppController(Options options) : IDragTarget, ISession
     /// Switches for the simulated devices and transfers (`--fake`).
     IReadOnlyList<MenuEntry> BuildFakeMenu() =>
     [
-        new("Wormhole Send · 假数据", Enabled: false),
+        new("Wormhole Send · Fake data", Enabled: false),
         MenuEntry.Separator,
-        new("配对设备", Glyphs.Devices, Submenu: () => new[] { 0, 1, 3 }
-            .Select(count => new MenuEntry($"{count} 台", Action: () => model.Devices = Device.Samples.Take(count).ToList(),
+        new("Paired devices", Glyphs.Devices, Submenu: () => new[] { 0, 1, 3 }
+            .Select(count => new MenuEntry(count == 1 ? "1 device" : $"{count} devices", Action: () => model.Devices = Device.Samples.Take(count).ToList(),
                 Checked: model.Devices.Count == count))
             .ToList()),
-        new("默认设备离线", Glyphs.NoNetwork,
+        new("Default device offline", Glyphs.NoNetwork,
             () => model.Devices = model.Devices.Select(d => d.IsDefault ? d with { Online = !d.Online } : d).ToList(),
             Enabled: model.DefaultDevice is not null, Checked: model.DefaultDevice?.Online == false),
-        new("发送结果", Glyphs.Send, Submenu: () => Enum.GetValues<FakeTransfers.Outcome>()
+        new("Send outcome", Glyphs.Send, Submenu: () => Enum.GetValues<FakeTransfers.Outcome>()
             .Select(outcome => new MenuEntry(FakeTransfers.Title(outcome), Action: () => model.Fake.NextOutcome = outcome,
                 Checked: model.Fake.NextOutcome == outcome))
             .ToList()),
         MenuEntry.Separator,
-        new("模拟接收文件", Glyphs.Document, () =>
+        new("Simulate a receive", Glyphs.Document, () =>
         {
             Activate(Home);
             model.Fake.Receive(model.Devices.FirstOrDefault(d => d.Id == "air") ?? Device.Samples[1]);
         }),
-        new("模拟配对请求", Glyphs.Link, () => model.ShowPairRequest("fake", "MacBook Air", "482019")),
+        new("Simulate a pairing request", Glyphs.Link, () => model.ShowPairRequest("fake", "MacBook Air", "482019")),
         new("LocalSend", Device: DeviceGlyph.Phone, Submenu: () =>
         [
-            new("在线设备", Action: () => model.LocalSendDevices = model.LocalSendDevices.Count == 0 ? Device.LocalSendSamples : [],
+            new("Device online", Action: () => model.LocalSendDevices = model.LocalSendDevices.Count == 0 ? Device.LocalSendSamples : [],
                 Checked: model.LocalSendDevices.Count > 0),
-            new("模拟发来文件", Action: () => model.Handle(new ReceiveRequest(
-                "fake-files", "pixel", "Pixel 8", "mobile", "IMG_0001.jpg 等 3 个文件", 3, 8_400_000, null))),
-            new("模拟发来文字", Action: () => model.Handle(new ReceiveRequest(
-                "fake-text", "pixel", "Pixel 8", "mobile", "一段文字", 1, 0, Demo.SampleText))),
+            new("Simulate incoming files", Action: () => model.Handle(new ReceiveRequest(
+                "fake-files", "pixel", "Pixel 8", "mobile", "IMG_0001.jpg and 2 more files", 3, 8_400_000, null))),
+            new("Simulate an incoming text", Action: () => model.Handle(new ReceiveRequest(
+                "fake-text", "pixel", "Pixel 8", "mobile", "Text message", 1, 0, Demo.SampleText))),
         ]),
         SoundsEntry(),
         MenuEntry.Separator,

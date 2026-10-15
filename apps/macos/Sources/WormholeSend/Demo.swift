@@ -22,13 +22,13 @@ enum Demo {
         if let count = Arguments.value(of: "--devices").flatMap(Int.init) {
             model.devices = Array(Device.samples.prefix(count))
         }
-        let files = [URL(fileURLWithPath: "/tmp/季度报告.pdf")]
-        let sample = Transfer(device: Device.samples[0], files: files, label: "季度报告.pdf")
+        let files = [URL(fileURLWithPath: "/tmp/Quarterly Report.pdf")]
+        let sample = Transfer(device: Device.samples[0], files: files, label: "Quarterly Report.pdf")
 
         // Let the island grow out of the notch, as it would for real.
         Task {
             try? await Task.sleep(for: .milliseconds(300))
-            model.dragLabel = "季度报告.pdf"
+            model.dragLabel = "Quarterly Report.pdf"
             switch name {
             case "hint": model.phase = .hint
             case "target": model.phase = .target
@@ -51,7 +51,7 @@ enum Demo {
                 model.transfer?.stats = stats
                 model.phase = .sending
             case "awaiting":
-                model.transfer = Transfer(device: Device.localSendSample, files: files, label: "季度报告.pdf")
+                model.transfer = Transfer(device: Device.localSendSample, files: files, label: "Quarterly Report.pdf")
                 model.phase = .awaiting
             case "queued":
                 model.transfer = sample
@@ -67,7 +67,7 @@ enum Demo {
                 model.transfer = sample
                 model.phase = .failed(tr("网络中断", "The network dropped", "ネットワークが切断されました"), canRetry: true)
             case "declined":
-                model.transfer = Transfer(device: Device.localSendSample, files: files, label: "季度报告.pdf")
+                model.transfer = Transfer(device: Device.localSendSample, files: files, label: "Quarterly Report.pdf")
                 model.phase = .failed(tr("Pixel 8 拒绝了接收", "Pixel 8 declined", "Pixel 8 が受信を拒否しました"), canRetry: false)
             case "refused": model.phase = .refused(Device.samples[2].notSent)
             case "no-access": model.phase = .noAccess(app: tr("微信", "WeChat", "WeChat"))
@@ -75,8 +75,8 @@ enum Demo {
                 var device = Device.samples[1]
                 device.needsRepair = true
                 model.phase = .refused(device.notSent)
-            case "pair-request": model.phase = .pairRequest(pairId: "demo", alias: "书房台式机", code: "482019")
-            case "pair-waiting": model.phase = .pairWaiting(alias: "书房台式机")
+            case "pair-request": model.phase = .pairRequest(pairId: "demo", alias: "Study Desktop", code: "482019")
+            case "pair-waiting": model.phase = .pairWaiting(alias: "Study Desktop")
             case "receive-request":
                 let request = ReceiveRequest(
                     id: "demo", device: Device.localSendSample,
@@ -98,7 +98,7 @@ enum Demo {
                     detail: tr("明天下午三点在 3 楼…", "Meeting tomorrow at 3 pm…", "明日の午後3時、3階の…"), success: true)
             case "notice":
                 model.phase = .notice(
-                    text: tr("已与 书房台式机 配对", "Paired with 书房台式机", "书房台式机 とペアリングしました"), detail: nil, success: true)
+                    text: tr("已与 书房台式机 配对", "Paired with Study Desktop", "书房台式机 とペアリングしました"), detail: nil, success: true)
             case "notice-failed":
                 model.phase = .notice(
                     text: tr("配对失败：对方拒绝了配对", "Pairing failed: they declined", "ペアリングできませんでした：相手が拒否しました"),

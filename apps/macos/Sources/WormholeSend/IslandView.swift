@@ -306,7 +306,7 @@ private struct TrailingIconLabelStyle: LabelStyle {
     }
 }
 
-/// "松手发送到 书房台式机".
+/// "Release to send to Study Desktop".
 private func releaseToSend(to name: String) -> String {
     tr("松手发送到 \(name)", "Release to send to \(name)", "離すと \(name) に送信")
 }
@@ -326,7 +326,7 @@ private struct SingleTargetContent: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.secondary)
                     .lineLimit(1)
-                    // Keeps "等 3 个文件" when a long name has to give way.
+                    // Keeps "and 2 more files" when a long name has to give way.
                     .truncationMode(.middle)
             }
         }
@@ -591,7 +591,7 @@ private struct ReceiveRequestContent: View {
                         HStack(spacing: 8) {
                             Text(request.label)
                                 .lineLimit(1)
-                                // Keeps "等 3 个文件" when a long name has to give way.
+                                // Keeps "and 2 more files" when a long name has to give way.
                                 .truncationMode(.middle)
                             Spacer(minLength: 0)
                             Text(ByteCountFormatter.string(fromByteCount: request.total, countStyle: .file))

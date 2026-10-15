@@ -37,14 +37,14 @@ struct Device: Identifiable, Equatable {
     /// unavailable, like on Windows.
     var usable: Bool { online && !needsRepair }
 
-    /// "书房台式机 离线，无法发送".
+    /// "Study Desktop is offline, can't send".
     var cannotSend: String {
         needsRepair
             ? tr("\(name) 需要重新配对，无法发送", "\(name) needs re-pairing, can't send", "\(name) は再ペアリングが必要なため送信できません")
             : tr("\(name) 离线，无法发送", "\(name) is offline, can't send", "\(name) はオフラインのため送信できません")
     }
 
-    /// Released over it while it can't take files: "iPad 离线，未发送".
+    /// Released over it while it can't take files: "iPad is offline, not sent".
     var notSent: String {
         needsRepair
             ? tr("\(name) 需要重新配对，未发送", "\(name) needs re-pairing, not sent", "\(name) は再ペアリングが必要なため送信しませんでした")
@@ -52,7 +52,7 @@ struct Device: Identifiable, Equatable {
     }
 
     static let samples: [Device] = [
-        Device(id: "desk", name: "书房台式机", glyph: .desktop, online: true, isDefault: true),
+        Device(id: "desk", name: "Study Desktop", glyph: .desktop, online: true, isDefault: true),
         Device(id: "air", name: "MacBook Air", glyph: .laptop, online: true, isDefault: false),
         Device(id: "ipad", name: "iPad", glyph: .tablet, online: false, isDefault: false),
     ]
@@ -65,7 +65,7 @@ struct Device: Identifiable, Equatable {
 struct ReceiveRequest: Equatable {
     let id: String
     let device: Device
-    /// "IMG_0001.jpg 等 3 个文件", as the core labels it.
+    /// "IMG_0001.jpg and 2 more files", as the core labels it.
     let label: String
     let total: Int64
     let text: String?
@@ -95,7 +95,7 @@ struct Transfer: Equatable {
     var device: Device
     /// The files sent, or once received, the saved files and folders.
     var files: [URL]
-    /// "季度报告.pdf" or "3 个文件".
+    /// "Quarterly Report.pdf" or "3 files".
     var label: String
     var progress: Double = 0
     var count: Int
@@ -148,7 +148,7 @@ struct TransferStats: Equatable {
         }
     }
 
-    /// "1.2 GB / 2.1 GB · 45.3 MB/s" for one file, "3 / 12 个文件 · 45.3 MB/s"
+    /// "1.2 GB / 2.1 GB · 45.3 MB/s" for one file, "3 / 12 files · 45.3 MB/s"
     /// for several or a folder.
     var line: String {
         let count = tr("\(filesDone) / \(files) 个文件", "\(filesDone) / \(files) files", "\(filesDone) / \(files) ファイル")
@@ -162,11 +162,10 @@ struct TransferStats: Equatable {
     }
 }
 
-/// What a drag carries, named after its first item: "季度报告.pdf",
-/// "文件夹 设计稿", "季度报告.pdf 等 3 个文件", "设计稿 等 2 个文件夹",
-/// "季度报告.pdf 等 4 个文件或文件夹". The same rules as the core's labels
-/// and the Windows app, in English ("a.pdf and 2 more files") and Japanese
-/// ("a.pdf など 3 個のファイル") too.
+/// What a drag carries, named after its first item: "Quarterly Report.pdf",
+/// "Designs (folder)", "Quarterly Report.pdf and 2 more files", "Designs and
+/// 1 more folder", "Quarterly Report.pdf and 3 more items". The same rules
+/// as the core's labels and the Windows app, in Chinese and Japanese too.
 enum FileLabel {
     static func of(_ urls: [URL]) -> String {
         guard let first = urls.first else { return tr("文件", "Files", "ファイル") }
@@ -187,7 +186,7 @@ enum FileLabel {
         }
     }
 
-    /// "3 个文件", while the names are not known yet.
+    /// "3 files", while the names are not known yet.
     static func count(_ count: Int) -> String {
         tr("\(count) 个文件", plural(count, "file", "files"), "\(count) 個のファイル")
     }

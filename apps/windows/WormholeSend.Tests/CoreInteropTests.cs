@@ -38,6 +38,8 @@ public sealed class CoreInteropTests : IDisposable
             ["portFallback"] = true,
             ["alias"] = name,
             ["saveDir"] = Path.Combine(root, name, "received"),
+            // As the app does: the core speaks the interface's language.
+            ["language"] = L.Code(L.Current),
         };
         var (core, settings) = Core.Start(config, events.Add);
         cores.Add(core);
@@ -51,7 +53,7 @@ public sealed class CoreInteropTests : IDisposable
         Assert.StartsWith("wormhole-ffi ", Core.Version);
         var a = Start("ErrA", 53520);
         var error = Assert.Throws<CoreException>(() => a.Core.Command("nope"));
-        Assert.Equal("未知命令：nope", error.Message);
+        Assert.Equal("Unknown command: nope", error.Message);
     }
 
     [Fact]
@@ -84,7 +86,7 @@ public sealed class CoreInteropTests : IDisposable
         var device = Device.FromCore(devices.Single()!);
         Assert.Equal(("WinB", true), (device.Name, device.IsDefault));
 
-        var file = Path.Combine(root, "季度报告.txt");
+        var file = Path.Combine(root, "Quarterly report.txt");
         File.WriteAllText(file, "Wormhole");
         var transfers = new CoreTransfers(a.Core);
         var id = transfers.Send(device, [file]);

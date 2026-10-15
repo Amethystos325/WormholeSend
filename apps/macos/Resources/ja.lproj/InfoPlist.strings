@@ -1,2 +1,2 @@
-/* ローカルネットワークの許可ダイアログ（macOS 15 以降）。 */
+/* The Local Network prompt (macOS 15+). */
 "NSLocalNetworkUsageDescription" = "ローカルネットワーク上のペアリング済みのコンピュータを見つけ、サーバーを経由せずに直接ファイルを送るために使います。";

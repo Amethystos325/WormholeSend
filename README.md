@@ -1,69 +1,100 @@
 # Wormhole Send
 
-局域网文件传输：把文件拖到 Mac 刘海（或 Windows 屏幕顶部的岛）上，直接发给已配对的设备，对方不用确认。也能和手机、电脑上的 LocalSend 互传（每次由接收方确认）。界面有中文、English、日本語，默认跟随系统语言。设计见[设计文档](https://claude.ai/code/artifact/e854ce7e-9d13-434e-a150-eab89efc3285)。
+Drop a file on your Mac's notch, or on the island at the top of a Windows screen, and it lands on your other computer. No cloud, no accounts, no "accept?" prompt on the other side.
 
-当前进度：第 1 步（Rust 核心 + 命令行 `whs`）、第 2 步（macOS 刘海面板，见 [apps/macos](apps/macos/README.md)）、第 3 步（Windows 顶部岛，见 [apps/windows](apps/windows/README.md)）和第 4 步（配对与接收排队）已完成；第 5 步（两端界面接入核心）也已完成：macOS 刘海和 Windows 顶部岛的发送、接收、排队、配对都走真实核心。之后又加了和 LocalSend 互传（设计文档 5.5）和三种界面语言（7.6）。
+Wormhole Send is a local-network file transfer app for macOS and Windows. Pair two computers once, and from then on, sending is a single drag. It also exchanges files with [LocalSend](https://localsend.org) on phones and other computers.
 
-| 目录 | 内容 |
+## Features
+
+- **Drag to send.** Start dragging a file and a hint appears at the top of the screen. Drop it there to send it to your default device, or drag down into the list to pick another device.
+- **Pair once, then no prompts.** Two devices pair by comparing a 6-digit code. After that, files between them arrive without the receiver confirming anything.
+- **Local only.** Devices find each other by multicast on the local network and transfer directly over TLS. Nothing goes through a server.
+- **Works with LocalSend.** LocalSend devices (1.18 or later) show up next to your paired ones. Transfers with them work both ways, and the receiver accepts each one.
+- **Queues instead of failing.** If the receiver is busy receiving from another device, your send waits its turn and starts automatically.
+- **Native on both platforms.** On macOS, a SwiftUI and AppKit app that lives in the notch, or in a floating capsule on an external display. On Windows, a WPF app with a top-of-screen island and a tray menu.
+- **English, Chinese and Japanese.** The interface follows the system language, and you can switch it from the menu.
+
+## How it works
+
+```
+ ┌────────────────────┐      ┌────────────────────┐
+ │ macOS app (Swift)  │      │ Windows app (WPF)  │
+ └─────────┬──────────┘      └─────────┬──────────┘
+           │   C ABI + JSON (core-ffi)  │
+           └─────────────┬──────────────┘
+               ┌─────────┴──────────┐        whs (CLI)
+               │  wormhole-core     │◄──────────────────
+               │  (Rust)            │
+               └─────────┬──────────┘
+                         │  LocalSend protocol (HTTPS + multicast)
+                    other devices
+```
+
+The Rust core handles identity, pairing, trust, discovery, sending, receiving and the receive queue. It is built on the Rust implementation of the [LocalSend protocol](https://github.com/localsend/protocol), so Wormhole Send and LocalSend devices can see each other. Pairing and queueing run over a small control service of its own. The two native apps talk to the core through a C interface with JSON messages ([core-ffi](core-ffi/README.md)).
+
+## Status
+
+Wormhole Send is in early development. Both apps work end to end, but there are no installers or signed releases yet, so you build it from source. See the [roadmap](docs/roadmap.md) for what's missing.
+
+| Platform | Requirements |
 | --- | --- |
-| `core/` | Rust 核心 `wormhole-core`：身份、信任库、发现、收发、控制服务（配对、解除配对、接收排队），基于 LocalSend 的 `localsend` crate |
-| `core-ffi/` | 核心的 C 接口（`wormhole.dll` / `libwormhole.a` + `include/wormhole.h`），供两端原生界面调用，见 [core-ffi/README.md](core-ffi/README.md) |
-| `cli/` | 命令行 `whs`，用来在原生界面之前验证核心 |
-| `apps/macos/` | macOS 应用（SwiftUI + AppKit）：刘海 / 外接屏胶囊、菜单栏菜单、配对、LocalSend 互传，接入核心 |
-| `apps/windows/` | Windows 应用（WPF）：顶部岛、托盘、设置、配对、首次引导，接入核心 |
-| `tools/` | `translations.py`：从代码里列出三种语言（中文、English、日本語）的界面文字对照表，Windows、macOS、核心各用到哪些 |
+| macOS | macOS 14 or later. Best on a Mac with a notch, and also works on external displays. |
+| Windows | Windows 10 or 11 |
 
-## 构建
+## Building
 
-- macOS：安装 [Rust](https://rustup.rs)，然后 `cargo build --release`，程序在 `target/release/whs`。
-- Windows：安装 Rust 和 Visual Studio Build Tools（勾选“使用 C++ 的桌面开发”），先运行一次 `git config --global core.longpaths true`（localsend 依赖带的 flutter 子模块里有超过 260 字符的路径，不开会检出失败），然后 `cargo build --release`，程序在 `target\release\whs.exe`。
+You need [Rust](https://rustup.rs) for every target.
 
-## 两台电脑互传
+**macOS app**
 
-1. 接收方运行 `whs receive`。Windows 第一次运行会弹防火墙提示，选“允许专用网络”；macOS 可能询问本地网络权限。
-2. 在另一台电脑上运行 `whs pair <对方名称>`（名称用 `whs devices` 查看）。两边都会显示同一个 6 位码，核对一致后各自输入 `y`。
-3. 配对后，发送方运行 `whs send 报告.pdf 设计稿/`（发给默认设备）或 `whs send -t 台式机 报告.pdf`，对方不用确认。
-4. 解除配对：`whs unpair <对方名称>`。对方在线会立即收到通知；不在线时，下次发现它时再通知。
+```bash
+cd apps/macos
+./scripts/bundle.sh            # builds the core and build/Wormhole Send.app
+open "build/Wormhole Send.app"
+```
 
-接收方正在接收别的设备的文件时，新的发送会排队：发送方显示“排队中 · 前面还有 N 个”，轮到后自动发送。
+**Windows app** (needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) and Visual Studio Build Tools with "Desktop development with C++")
 
-## 和 LocalSend 互传
+```powershell
+git config --global core.longpaths true   # a LocalSend dependency has paths over 260 characters
+cd apps/windows
+dotnet run --project WormholeSend
+```
 
-LocalSend 设备（1.18 及以上）不能配对，但可以直接互传，每次由接收方确认：
+**Command line** (`whs`, for trying the core without a UI)
 
-- LocalSend 发来文件时，`whs receive` 显示“XX 想发送 a.jpg 等 3 个文件”，输入 `y` 接收、`n` 拒绝，1 分钟不回答视为拒绝。发来的是一段文字时，接收后打印出来（刘海和顶部岛里是复制到剪贴板）。
-- 发给 LocalSend 设备：`whs send -t <LocalSend 设备名> 文件…`，显示“等待对方接收”，对方在 LocalSend 里点接收后开始传输。
-- `whs devices` 里 LocalSend 设备名后面带“（LocalSend）”。LocalSend 那边显示本机的设备型号为“Wormhole Send”。
-- 对方开了 PIN 时暂不支持发送。
+```bash
+cargo build --release          # target/release/whs
+```
 
-组播不通时（公司网络、开着 VPN），可以用 `whs trust add <指纹> --addr 192.168.1.20:53320` 手动添加地址（`trust` 命令只改本机，调试用）。
+The platform READMEs cover signing, demo modes, tests and manual checklists: [macOS](apps/macos/README.md) · [Windows](apps/windows/README.md).
 
-## 命令
+## Quick start with the CLI
 
-| 命令 | 作用 |
+```bash
+# On the receiving computer
+whs receive
+
+# On the sending computer: pair once (both sides show the same 6-digit code), then send
+whs devices
+whs pair "Study Desktop"
+whs send report.pdf designs/
+```
+
+See the [CLI guide](docs/cli.md) for every command, LocalSend interop, ports and data locations.
+
+## Repository layout
+
+| Path | What's there |
 | --- | --- |
-| `whs id` | 本机名称、指纹、端口、保存位置 |
-| `whs config [--alias 名称] [--save-dir 目录]` | 查看或修改设置 |
-| `whs pair <设备>` | 与附近设备配对，双方核对 6 位码 |
-| `whs unpair <设备>` | 解除配对并通知对方 |
-| `whs trust list / add / remove / default` | 查看已配对设备；手动增删只改本机（调试用） |
-| `whs devices [--wait 秒]` | 搜索附近设备 |
-| `whs receive [--save-dir 目录]` | 持续接收已配对设备的文件，并处理配对请求和 LocalSend 的发送请求（输入 y / n），Ctrl+C 退出 |
-| `whs send [-t 设备] 路径…` | 发送文件或文件夹（设备可以是附近的 LocalSend 设备），Ctrl+C 取消 |
+| [`core/`](core) | `wormhole-core`: identity, trust store, discovery, transfers, and the control service for pairing, unpairing and the receive queue |
+| [`core-ffi/`](core-ffi) | The core's C interface (`wormhole.dll` / `libwormhole.a` + `include/wormhole.h`) for the native apps |
+| [`cli/`](cli) | `whs`, a command-line front end to the core |
+| [`apps/macos/`](apps/macos) | The macOS app (SwiftUI + AppKit) |
+| [`apps/windows/`](apps/windows) | The Windows app (WPF) and its tests |
+| [`assets/`](assets) | Icons and sounds, with the scripts that generate them |
+| [`tools/`](tools) | `translations.py`, which prints every interface string in all three languages |
 
-全局参数：`--json` 按行输出 JSON 事件（字段与设计文档的事件表一致）；`--home 目录` 和 `--port 端口` 用于在一台电脑上模拟多台设备。排查连接问题时可以设环境变量 `WHS_LOG=debug`，把核心和 localsend crate 的日志打印到标准错误（每个收到的请求、被拒的连接、TLS 错误）。
+## Acknowledgements
 
-## 数据位置
-
-- 端口：传输服务 53320，控制服务 53321（配对、排队），组播 53317（与 LocalSend 相同，这样双方能互相发现；和本机上的 LocalSend 共用不冲突）。被占用时临时命令会顺延到下一组端口。
-- 数据目录：macOS 为 `~/Library/Application Support/WormholeSend`，Windows 为 `%APPDATA%\WormholeSend`。里面有 `identity.pem`（本机证书和私钥，删除后需要重新配对）、`settings.json`、`trust.json` 和 `pending.json`（还没送达的解除配对通知）。
-- 收到的文件默认存到“下载/Wormhole Send”，可用 `whs config --save-dir` 修改。
-
-## 与设计相比还没做的
-
-- macOS：设置窗口（设置项目前放在菜单栏菜单里）、首次引导里的配对步骤和动画、私钥存入钥匙串。
-- Windows 端：安装包（MSIX 还是 Inno Setup 待定）、私钥存入 DPAPI、双屏和 150% 缩放的实机验证，见 [apps/windows](apps/windows/README.md)。
-
-## 致谢
-
-传输层使用 [LocalSend](https://github.com/localsend/localsend) 的 Rust 核心（Apache-2.0）；`core/src/identity.rs` 和 `core/src/send.rs` 部分改编自 LocalSend CLI。
+The transfer layer uses the Rust core of [LocalSend](https://github.com/localsend/localsend) (Apache-2.0). `core/src/identity.rs` and parts of `core/src/send.rs` are adapted from the LocalSend CLI.

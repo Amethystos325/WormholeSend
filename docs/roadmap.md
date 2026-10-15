@@ -1,0 +1,28 @@
+# Roadmap
+
+What's planned but not built yet.
+
+## Both platforms
+
+- Installers and signed releases.
+
+## macOS
+
+- A settings window. For now, settings live in the menu bar menu.
+- A pairing step and animation in the first-run welcome.
+- Storing the private key in the Keychain instead of `identity.pem`.
+- Developer ID signing and notarization, so the app runs on other Macs without Gatekeeper warnings.
+
+## Windows
+
+- An installer, using Inno Setup. It should:
+  - add firewall rules for TCP 53320, TCP 53321 and UDP 53317 (discovery, LocalSend's port)
+  - use `assets/app-icon.ico`
+  - be code-signed, so SmartScreen doesn't block it
+- Protecting the private key in `identity.pem` with DPAPI.
+- A "sending" hint when you drag onto the island while a send is in progress. For now, that drag is ignored.
+- Testing on real hardware with a second monitor, at 150% scaling, with monitors at different scaling, and with a Mac on the other end.
+
+## Core
+
+- Sending to LocalSend devices that require a PIN.

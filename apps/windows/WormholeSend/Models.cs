@@ -45,8 +45,8 @@ sealed record Transfer(Device Device, IReadOnlyList<string> Files, string Label,
 }
 
 /// What a drag carries, named after its first item, as in the macOS app:
-/// "季度报告.pdf", "文件夹 设计稿", "季度报告.pdf 等 3 个文件",
-/// "设计稿 等 2 个文件夹", "季度报告.pdf 等 4 个文件或文件夹".
+/// "Report.pdf", "Design (folder)", "Report.pdf and 2 more files",
+/// "Design and 1 more folder", "Report.pdf and 3 more items".
 static class FileLabel
 {
     public static string Of(IReadOnlyList<string> paths)
@@ -136,7 +136,7 @@ sealed class TransferStats(long total = 0, int files = 0)
             Speed = (bytes - first.Bytes) / (time - first.Time).TotalSeconds;
     }
 
-    /// "945 MB / 2.1 GB · 45 MB/s" for one file, "3 / 12 个文件 · 45 MB/s" for
+    /// "945 MB / 2.1 GB · 45 MB/s" for one file, "3 / 12 files · 45 MB/s" for
     /// several or a folder; empty until the core said what it sends.
     public string Line
     {

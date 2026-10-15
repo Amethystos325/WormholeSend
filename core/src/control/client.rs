@@ -35,8 +35,8 @@ impl std::fmt::Display for ControlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ControlError::Status(status, message) if message.is_empty() => write!(f, "HTTP {status}"),
-            ControlError::Status(status, message) => write!(f, "{message}（HTTP {status}）"),
-            ControlError::Unreachable(reason) => write!(f, "无法连接：{reason}"),
+            ControlError::Status(status, message) => f.write_str(&tr!("{message}（HTTP {status}）", "{message} (HTTP {status})", "{message}（HTTP {status}）")),
+            ControlError::Unreachable(reason) => f.write_str(&tr!("无法连接：{reason}", "Can't connect: {reason}", "接続できません：{reason}")),
         }
     }
 }
@@ -147,7 +147,7 @@ impl ControlClient<'_> {
         };
         tokio::time::timeout(timeout, request)
             .await
-            .unwrap_or_else(|_| Err(ControlError::Unreachable("超时".to_string())))
+            .unwrap_or_else(|_| Err(ControlError::Unreachable(tr!("超时", "Timed out", "タイムアウトしました"))))
     }
 }
 

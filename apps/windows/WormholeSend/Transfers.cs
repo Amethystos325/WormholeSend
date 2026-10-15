@@ -39,10 +39,10 @@ sealed class FakeTransfers(Action<CoreEvent> emit) : ITransfers
 
     public static string Title(Outcome outcome) => outcome switch
     {
-        Outcome.Success => "成功",
-        Outcome.Busy => "对方忙（排队）",
-        Outcome.Declined => "LocalSend 设备拒绝",
-        _ => "失败",
+        Outcome.Success => "Success",
+        Outcome.Busy => "Busy (queued)",
+        Outcome.Declined => "LocalSend device declines",
+        _ => "Failure",
     };
 
     readonly Dictionary<string, (Device Device, IReadOnlyList<string> Files)> sends = [];

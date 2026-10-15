@@ -92,7 +92,7 @@ static class Ui
 }
 
 /// Text shortened in the middle when it doesn't fit, as SwiftUI's
-/// truncationMode(.middle): a long name gives way, "等 3 个文件" stays.
+/// truncationMode(.middle): a long name gives way, "and 2 more files" stays.
 sealed class MiddleText : Decorator
 {
     readonly string full;

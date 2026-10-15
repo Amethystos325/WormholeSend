@@ -8,7 +8,7 @@ public class IslandModelTests
 {
     const double PanelWidth = 560;
     static readonly Point Sensor = new(280, 3);
-    static readonly string[] Files = [@"C:\Users\Public\季度报告.pdf"];
+    static readonly string[] Files = [@"C:\Users\Public\Quarterly report.pdf"];
 
     static IslandModel Entered(IslandModel? model = null)
     {
@@ -25,7 +25,7 @@ public class IslandModelTests
         var model = Entered();
         Assert.Equal(new Phase.Target(), model.Phase);
         Assert.True(model.CanDrop);
-        Assert.Equal("季度报告.pdf", model.DragLabel);
+        Assert.Equal("Quarterly report.pdf", model.DragLabel);
     }
 
     /// A drag seen from outside (DragMonitor): the hint shows before the
@@ -40,7 +40,7 @@ public class IslandModelTests
         model.DragCarries(Files);
         model.DragMoved(Sensor, PanelWidth);
         Assert.Equal(new Phase.Target(), model.Phase);
-        Assert.Equal("季度报告.pdf", model.DragLabel);
+        Assert.Equal("Quarterly report.pdf", model.DragLabel);
         Assert.True(model.Drop([]));
         Assert.Equal(Files, model.Transfer?.Files);
     }
@@ -52,7 +52,7 @@ public class IslandModelTests
         model.DragStarted();
         model.DragCarries(null);
         model.DragMoved(Sensor, PanelWidth);
-        Assert.Equal(new Phase.Unavailable("只能发送文件"), model.Phase);
+        Assert.Equal(new Phase.Unavailable("Only files can be sent"), model.Phase);
         Assert.False(model.CanDrop);
         model.DragMoved(new Point(280, 240), PanelWidth);
         Assert.Equal(new Phase.Hint(), model.Phase);
@@ -115,7 +115,7 @@ public class IslandModelTests
         var model = Entered();
         Assert.True(model.Drop(Files));
         Assert.Equal(new Phase.Sending(), model.Phase);
-        Assert.Equal("书房台式机", model.Transfer?.Device.Name);
+        Assert.Equal("Study PC", model.Transfer?.Device.Name);
         Assert.Equal(0, model.Progress);
     }
 
@@ -146,14 +146,14 @@ public class IslandModelTests
         var model = Entered();
         model.DragLeftPanel();
         Assert.Equal(new Phase.Hint(), model.Phase);
-        Assert.Equal("移到这里发送到 书房台式机", model.HintText);
+        Assert.Equal("Move here to send to Study PC", model.HintText);
     }
 
     [Fact]
     public void WithoutDevicesNothingIsSent()
     {
         var model = Entered(new IslandModel { Devices = [] });
-        Assert.Equal(new Phase.Unavailable("还没有配对设备 · 点击配对"), model.Phase);
+        Assert.Equal(new Phase.Unavailable("No paired devices · Click to pair"), model.Phase);
         Assert.False(model.CanDrop);
         Assert.False(model.Drop(Files));
     }
@@ -163,7 +163,7 @@ public class IslandModelTests
     {
         var model = new IslandModel { Devices = [Device.Samples[0] with { Online = false }] };
         Entered(model);
-        Assert.Equal(new Phase.Unavailable("书房台式机 离线，无法发送"), model.Phase);
+        Assert.Equal(new Phase.Unavailable("Study PC is offline"), model.Phase);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class IslandModelTests
         Entered(model);
         // The list, with the device under the cursor already hot.
         Assert.Equal(new Phase.Picker(1), model.Phase);
-        Assert.Equal("默认设备离线，移到这里选其他设备", model.HintText);
+        Assert.Equal("Default device offline. Move here to choose another", model.HintText);
     }
 
 

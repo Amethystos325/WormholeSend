@@ -12,7 +12,7 @@ final class IslandModel {
         /// A file drag is in progress somewhere on screen.
         case hint
         /// Over the island with the default device online: release sends to
-        /// it, dragging down into the "其他设备" strip opens the list.
+        /// it, dragging down into the "Other devices" strip opens the list.
         case target
         case picker(hot: Int?)
         case unavailable(String)
@@ -21,10 +21,10 @@ final class IslandModel {
         case awaiting
         case queued(position: Int)
         case done
-        /// Without 重试 when the other side's user declined: retrying
+        /// Without Retry when the other side's user declined: retrying
         /// would only ask them again.
         case failed(String, canRetry: Bool)
-        /// Released over a device that can't take files now: "iPad 离线，未发送".
+        /// Released over a device that can't take files now: "iPad is offline, not sent".
         case refused(String)
         /// The dropped files are another app's data, which macOS keeps from
         /// this app (see `AppData`): names that app when known and opens Full
@@ -32,15 +32,15 @@ final class IslandModel {
         case noAccess(app: String?)
         case receiving
         case received
-        /// An incoming transfer stopped: "对方取消了发送" or "连接中断".
+        /// An incoming transfer stopped: "The sender cancelled" or "The connection dropped".
         case interrupted(String)
-        /// Another device asks to pair: compare the code, then 拒绝 / 配对.
+        /// Another device asks to pair: compare the code, then Decline / Pair.
         /// Stays until the pairing ends.
         case pairRequest(pairId: String, alias: String, code: String)
         /// Accepted here, waiting for the other side.
         case pairWaiting(alias: String)
-        /// A LocalSend device asks to send: 拒绝 / 接收, or for a text
-        /// message 忽略 / 复制. Stays until answered, timed out or withdrawn.
+        /// A LocalSend device asks to send: Decline / Accept, or for a text
+        /// message Ignore / Copy. Stays until answered, timed out or withdrawn.
         case receiveRequest(ReceiveRequest)
         /// A short message: paired, pairing failed, unpaired, copied; the
         /// detail shows on the right.
@@ -724,12 +724,12 @@ final class IslandModel {
         }
     }
 
-    /// "发送失败：网络中断".
+    /// "Couldn't send: <reason>".
     static func failedText(_ reason: String) -> String {
         tr("发送失败：\(reason)", "Couldn't send: \(reason)", "送信失敗：\(reason)")
     }
 
-    /// "读取 微信 的文件需要完全磁盘访问权限".
+    /// "Sending files from WeChat needs Full Disk Access".
     static func noAccessText(app: String?) -> String {
         guard let app else {
             return tr("读取这个文件需要完全磁盘访问权限", "Sending this file needs Full Disk Access", "このファイルを送るにはフルディスクアクセスが必要です")
@@ -766,7 +766,7 @@ enum DemoFiles {
     static func make() -> [URL] {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("WormholeSendDemo", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return ["IMG_2041.heic", "IMG_2042.heic", "会议纪要.docx"].map { name in
+        return ["IMG_2041.heic", "IMG_2042.heic", "Meeting Notes.docx"].map { name in
             let url = dir.appendingPathComponent(name)
             if !FileManager.default.fileExists(atPath: url.path) {
                 try? Data("Wormhole Send demo file\n".utf8).write(to: url)

@@ -22,7 +22,7 @@ sealed class RecordingTransfers : ITransfers
 /// How the island follows the core's events (design doc 2.1, 2.2, 4.2).
 public class CoreEventTests
 {
-    static readonly string[] Files = [@"C:\Users\Public\季度报告.pdf"];
+    static readonly string[] Files = [@"C:\Users\Public\Quarterly report.pdf"];
     static readonly Device Desk = Device.Samples[0];
 
     static (IslandModel Model, RecordingTransfers Transfers) Sending()
@@ -36,7 +36,7 @@ public class CoreEventTests
     }
 
     static TransferFinished Finished(string id, bool sending, string status, IReadOnlyList<string>? saved = null) =>
-        new(id, sending, Desk.Id, Desk.Name, status, 1, 100, saved ?? [], status == "failed" ? "连接被重置" : null);
+        new(id, sending, Desk.Id, Desk.Name, status, 1, 100, saved ?? [], status == "failed" ? "Connection reset" : null);
 
     [Fact]
     public void ASendGoesThroughTheQueueToDone()
@@ -61,10 +61,10 @@ public class CoreEventTests
     }
 
     [Theory]
-    [InlineData("rejected", "对方已解除配对，需要重新配对")]
-    [InlineData("busy", "对方忙，稍后再试")]
-    [InlineData("offline", "无法连接，请确认在同一网络")]
-    [InlineData("failed", "连接被重置")]
+    [InlineData("rejected", "It unpaired this device; pair again")]
+    [InlineData("busy", "It's busy; try again later")]
+    [InlineData("offline", "Can't connect; make sure you're on the same network")]
+    [InlineData("failed", "Connection reset")]
     public void FailuresSayWhy(string status, string reason)
     {
         var (model, _) = Sending();
@@ -112,7 +112,7 @@ public class CoreEventTests
         Assert.Equal(0.25, model.Progress);
         Assert.Equal(2, model.WaitingCount);
 
-        string[] saved = [@"C:\Users\Public\Downloads\Wormhole Send\设计稿"];
+        string[] saved = [@"C:\Users\Public\Downloads\Wormhole Send\Design"];
         model.Handle(new TransferFinished("in-1", false, "air", "MacBook Air", "done", 3, 400, saved, null));
         Assert.Equal(new Phase.Received(), model.Phase);
         Assert.Equal(saved, model.Transfer?.Files);
@@ -124,7 +124,7 @@ public class CoreEventTests
         var model = new IslandModel();
         model.Handle(new TransferStarted("in-1", false, "air", "MacBook Air", 1, 400));
         model.Handle(Finished("in-1", false, "cancelled"));
-        Assert.Equal(new Phase.Interrupted("对方取消了发送"), model.Phase);
+        Assert.Equal(new Phase.Interrupted("The sender cancelled"), model.Phase);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class CoreEventTests
         Assert.Equal("p1:True", answered);
         Assert.Equal(new Phase.PairWaiting("MacBook Air"), model.Phase);
         model.PairFinished("p1", "MacBook Air", ok: true, reason: null);
-        Assert.Equal(new Phase.Notice("已与 MacBook Air 配对", Success: true), model.Phase);
+        Assert.Equal(new Phase.Notice("Paired with MacBook Air", Success: true), model.Phase);
     }
 
     [Fact]
@@ -185,7 +185,7 @@ public class CoreEventTests
     {
         var model = new IslandModel();
         model.ShowPairRequest("p1", "MacBook Air", "482019");
-        model.PairFinished("p1", "MacBook Air", ok: false, reason: "配对已超时");
+        model.PairFinished("p1", "MacBook Air", ok: false, reason: "Pairing timed out");
         Assert.Equal(new Phase.Idle(), model.Phase);
     }
 
@@ -208,9 +208,9 @@ public class CoreEventTests
     public void OnlineChangesUpdateTheDevices()
     {
         var model = new IslandModel();
-        model.Handle(new DeviceUpdated("desk", "书房台式机", "desktop", Online: false, Paired: true));
+        model.Handle(new DeviceUpdated("desk", "Study PC", "desktop", Online: false, Paired: true));
         Assert.False(model.DefaultDevice?.Online);
-        Assert.Equal("默认设备离线，移到这里选其他设备", model.HintText);
+        Assert.Equal("Default device offline. Move here to choose another", model.HintText);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class CoreEventTests
         model.Handle(new TransferProgress("send-1", true, Desk.Id, 0, 600_000_000, FilesDone: 0));
         now = TimeSpan.FromSeconds(1.5);
         model.Handle(new TransferProgress("send-1", true, Desk.Id, 150_000_000, 600_000_000, FilesDone: 3));
-        Assert.Equal("3 / 12 个文件 · 100 MB/s", model.SendDetail);
+        Assert.Equal("3 / 12 files · 100 MB/s", model.SendDetail);
     }
 
     [Fact]

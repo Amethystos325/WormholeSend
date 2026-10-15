@@ -1,8 +1,8 @@
 """Prints the interface texts in all three languages as a Markdown table,
-read from the code: L.T("中文", "English", "日本語") in the Windows app,
-tr("中文", "English", "日本語") in the macOS app, tr!(…) in core and
-core-ffi. Texts with the same Chinese but other English or Japanese on the
-two platforms show next to each other.
+read from the code: L.T(zh, en, ja) in the Windows app, tr(zh, en, ja)
+in the macOS app, tr!(zh, en, ja, args…) in core and core-ffi. Texts with
+the same Chinese but other English or Japanese on the two platforms show
+next to each other.
 
     python tools/translations.py > translations.md
 """
@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCES = [
     ('Windows', 'apps/windows/WormholeSend', '*.cs', 'L.T('),
     ('macOS', 'apps/macos', '**/*.swift', 'tr('),
-    ('core', 'core/src', '*.rs', 'tr!('),
+    ('core', 'core/src', '**/*.rs', 'tr!('),
     ('core', 'core-ffi/src', '*.rs', 'tr!('),
 ]
 
@@ -51,7 +51,7 @@ def main():
     def cell(text):
         return text.replace('|', '\\|').replace('\\"', '"')
 
-    print('| 中文 | English | 日本語 | used in |')
+    print('| Chinese | English | Japanese | used in |')
     print('| --- | --- | --- | --- |')
     for (zh, en, ja), platforms in sorted(rows.items()):
         print(f'| {cell(zh)} | {cell(en)} | {cell(ja)} | {", ".join(sorted(platforms))} |')

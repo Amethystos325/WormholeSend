@@ -20,7 +20,7 @@ static class Spec
 
     /// The drop area extends this far around the visible island.
     public const double HitOutset = 24;
-    /// The "其他设备" strip at the bottom of the target island. Dragging down
+    /// The "Other devices" strip at the bottom of the target island. Dragging down
     /// into it (or below it) opens the device list; nothing requires
     /// lingering, as on macOS.
     public const double MoreStripHeight = 40;

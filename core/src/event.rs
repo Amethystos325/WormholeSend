@@ -75,7 +75,7 @@ pub enum CoreEvent {
         device_id: String,
         alias: String,
         device_type: Option<String>,
-        /// What is offered, e.g. "IMG_0001.jpg 等 3 个文件".
+        /// What is offered, e.g. "IMG_0001.jpg and 2 more files".
         label: String,
         files: usize,
         total: u64,

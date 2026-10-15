@@ -9,19 +9,19 @@ namespace WormholeSend.Tests;
 
 static class TestLanguage
 {
-    /// The tests read the Chinese texts, whatever Windows' language.
+    /// The tests read the English texts, whatever Windows' language.
     [ModuleInitializer]
-    internal static void UseChinese() => L.Use(UiLanguage.Zh);
+    internal static void UseEnglish() => L.Use(UiLanguage.En);
 }
 
-/// The English and Japanese texts that follow rules: labels, counts, sizes.
+/// The texts of each language that follow rules: labels, counts, sizes.
 public sealed class LanguageTests : IDisposable
 {
     readonly string dir = Directory.CreateTempSubdirectory("WormholeSendTests").FullName;
 
     public void Dispose()
     {
-        L.Use(UiLanguage.Zh);
+        L.Use(UiLanguage.En);
         Directory.Delete(dir, recursive: true);
     }
 
@@ -51,6 +51,23 @@ public sealed class LanguageTests : IDisposable
         Assert.Equal("1 file", L.Files(1));
         Assert.Equal("3 files", L.Files(3));
         Assert.Equal("512 bytes", TransferStats.Size(512));
+    }
+
+    [Fact]
+    public void LabelsInChineseCountThemAll()
+    {
+        L.Use(UiLanguage.Zh);
+        var file = Make("登记表.docx");
+        var other = Make("照片.heic");
+        var folder = Make("设计稿", folder: true);
+        var folder2 = Make("素材", folder: true);
+        Assert.Equal("登记表.docx", FileLabel.Of([file]));
+        Assert.Equal("文件夹 设计稿", FileLabel.Of([folder]));
+        Assert.Equal("登记表.docx 等 2 个文件", FileLabel.Of([file, other]));
+        Assert.Equal("设计稿 等 2 个文件夹", FileLabel.Of([folder, folder2]));
+        Assert.Equal("登记表.docx 等 3 个文件或文件夹", FileLabel.Of([file, folder, other]));
+        Assert.Equal("3 个文件", L.Files(3));
+        Assert.Equal("512 字节", TransferStats.Size(512));
     }
 
     [Fact]
@@ -107,5 +124,8 @@ public sealed class LanguageTests : IDisposable
         L.Use(UiLanguage.Ja);
         model.Devices = Device.Samples;
         Assert.Equal("ここに移動して 書斎の PC に送信", model.HintText);
+        L.Use(UiLanguage.Zh);
+        model.Devices = Device.Samples;
+        Assert.Equal("移到这里发送到 书房台式机", model.HintText);
     }
 }

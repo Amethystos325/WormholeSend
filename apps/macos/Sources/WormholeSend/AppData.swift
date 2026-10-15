@@ -34,7 +34,7 @@ enum AppData {
         return errno != EPERM
     }
 
-    /// "微信" for a file under ~/Library/Containers/com.tencent.xinWeChat;
+    /// "WeChat" for a file under ~/Library/Containers/com.tencent.xinWeChat;
     /// nil when the path doesn't say which app.
     static func appName(owning url: URL) -> String? {
         let containers = FileManager.default.homeDirectoryForCurrentUser

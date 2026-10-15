@@ -14,7 +14,7 @@ enum Spec {
 
     /// The drop area extends this far around the visible island.
     static let hitOutset: CGFloat = 24
-    /// The "其他设备" strip at the bottom of the target island. Dragging down
+    /// The "Other devices" strip at the bottom of the target island. Dragging down
     /// into it (or below it) opens the device list. It replaces the dwell
     /// timer: holding a drag at the top edge opens Mission Control on macOS
     /// 15+, so nothing may require lingering up there.

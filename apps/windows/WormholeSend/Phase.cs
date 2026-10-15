@@ -9,7 +9,7 @@ abstract record Phase
     /// A file drag is in progress, but not over the island.
     public sealed record Hint() : Phase;
     /// Over the island with the default device online: release sends to
-    /// it, dragging down into the "其他设备" strip opens the list.
+    /// it, dragging down into the "Other devices" strip opens the list.
     public sealed record Target() : Phase;
     public sealed record Picker(int? Hot) : Phase;
     public sealed record Unavailable(string Text) : Phase;
@@ -35,7 +35,7 @@ abstract record Phase
     /// A LocalSend device asks to send files (`Label`, `Total` bytes), or a
     /// text message (`Text`), which is copied when accepted.
     public sealed record ReceiveRequest(string RequestId, string Alias, string Label, long Total, string? Text) : Phase;
-    /// A short message: "已与 … 配对", "… 已解除配对", "已复制到剪贴板"
+    /// A short message: "Paired with …", "… unpaired", "Copied"
     /// with the start of the text as `Detail`.
     public sealed record Notice(string Text, bool Success, string? Detail = null) : Phase;
 

@@ -85,13 +85,13 @@ fn version_is_a_static_string() {
 fn failures_come_back_as_json() {
     let _messages = MESSAGES.lock().unwrap_or_else(|e| e.into_inner());
     let response = take(unsafe { wh_command(std::ptr::null(), c"{}".as_ptr()) });
-    assert_eq!(response, json!({ "ok": false, "error": "核心没有启动" }));
+    assert_eq!(response, json!({ "ok": false, "error": "The core isn't running" }));
 
     // Not NULL, to see that a failed start clears it.
     let mut core = std::ptr::dangling_mut::<WhCore>();
     let response = take(unsafe { wh_start(c"{not json".as_ptr(), None, std::ptr::null_mut(), &mut core) });
     assert_eq!(response["ok"], false);
-    assert!(response["error"].as_str().unwrap().starts_with("配置不是有效的 JSON"));
+    assert!(response["error"].as_str().unwrap().starts_with("The configuration isn't valid JSON"));
     assert!(core.is_null());
 }
 
@@ -103,8 +103,8 @@ fn pair_send_retry_rename_and_unpair() {
     let a = Core::start(&path("a"), 53460, "FfiA", &path("a-recv"));
     let b = Core::start(&path("b"), 53470, "FfiB", &path("b-recv"));
 
-    assert_eq!(a.run(json!({ "command": "nope" }))["error"], "未知命令：nope");
-    assert_eq!(a.run(json!({ "command": "send", "deviceId": "x", "paths": [] }))["error"], "没有要发送的文件");
+    assert_eq!(a.run(json!({ "command": "nope" }))["error"], "Unknown command: nope");
+    assert_eq!(a.run(json!({ "command": "send", "deviceId": "x", "paths": [] }))["error"], "Nothing to send");
     assert_eq!(a.ok(json!({ "command": "devices.list" })), json!([]));
 
     // Discovery, then pairing; pair.start returns before any network work.
@@ -141,17 +141,17 @@ fn pair_send_retry_rename_and_unpair() {
     assert_eq!(paired[0]["needsRepair"], false);
 
     // Send, then send the same again with retry.
-    std::fs::write(path("报告.txt"), "Wormhole").unwrap();
-    let id = a.ok(json!({ "command": "send", "deviceId": peer, "paths": [path("报告.txt")] }));
+    std::fs::write(path("report.txt"), "Wormhole").unwrap();
+    let id = a.ok(json!({ "command": "send", "deviceId": peer, "paths": [path("report.txt")] }));
     assert_eq!(a.wait("transfer.finished")["status"], "done");
     let received = b.wait("transfer.finished");
     assert_eq!(received["status"], "done");
     assert_eq!(received["direction"], "receive");
-    assert_eq!(std::fs::read_to_string(path("b-recv").join("报告.txt")).unwrap(), "Wormhole");
+    assert_eq!(std::fs::read_to_string(path("b-recv").join("report.txt")).unwrap(), "Wormhole");
     let again = a.ok(json!({ "command": "transfer.retry", "transferId": id }));
     assert_ne!(again, id);
     assert_eq!(a.wait("transfer.finished")["status"], "done");
-    assert!(path("b-recv").join("报告 (1).txt").exists());
+    assert!(path("b-recv").join("report (1).txt").exists());
 
     // Renaming restarts the services in the background.
     let renamed = a.ok(json!({ "command": "settings.set", "alias": "FfiA2" }));
@@ -193,5 +193,8 @@ fn messages_follow_the_language() {
     assert_eq!(core.run(json!({ "command": "nope" }))["error"], "不明なコマンド：nope");
     core.ok(json!({ "command": "language.set", "language": "zh-Hans" }));
     assert_eq!(core.run(json!({ "command": "nope" }))["error"], "未知命令：nope");
+    // Back to the default, for the tests that run after this one.
+    core.ok(json!({ "command": "language.set", "language": "en" }));
+    assert_eq!(core.run(json!({ "command": "nope" }))["error"], "Unknown command: nope");
     core.stop();
 }

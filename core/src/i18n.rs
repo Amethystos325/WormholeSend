@@ -1,19 +1,19 @@
 //! The language of what the core says to the user: errors, the reasons of
 //! `pair.result` and `transfer.finished`, the label of `receive.request`.
-//! The shell sets it (core-ffi's `language`); Chinese until then. `tr!`
+//! The shell sets it (core-ffi's `language`); English until then. `tr!`
 //! picks a text, written out in all three languages where it is used.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Lang {
-    #[default]
     Zh,
+    #[default]
     En,
     Ja,
 }
 
-static CURRENT: AtomicU8 = AtomicU8::new(0);
+static CURRENT: AtomicU8 = AtomicU8::new(Lang::En as u8);
 
 impl Lang {
     /// "zh", "ja" or "en", or a language tag such as "zh-Hans-CN" or
@@ -45,13 +45,13 @@ pub fn set(lang: Lang) {
 
 pub fn current() -> Lang {
     match CURRENT.load(Ordering::Relaxed) {
-        1 => Lang::En,
+        0 => Lang::Zh,
         2 => Lang::Ja,
-        _ => Lang::Zh,
+        _ => Lang::En,
     }
 }
 
-/// `tr!("中文", "English", "日本語", args…)`: the text in the current
+/// `tr!(zh, en, ja, args…)`: the text in the current
 /// language, formatted as `format!` does (inline `{name}` works too).
 #[macro_export]
 macro_rules! tr {

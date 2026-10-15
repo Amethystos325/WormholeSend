@@ -491,7 +491,7 @@ impl Receiver {
                             .files
                             .get(&file_id)
                             .map_or(file_id.clone(), |file| file.file_name.clone());
-                        session.failed.insert(file_id, format!("{name}：{err}"));
+                        session.failed.insert(file_id, tr!("{name}：{err}", "{name}: {err}", "{name}：{err}"));
                     }
                 }
                 self.finish_if_done();
@@ -529,7 +529,7 @@ impl Receiver {
                     _ => tr!("{failed} 个文件没有收到", "{failed} files weren't received", "{failed} 個のファイルを受信できませんでした"),
                 };
                 if let Some(reason) = session.failed.values().next() {
-                    error.push_str(&format!("（{reason}）"));
+                    error.push_str(&tr!("（{reason}）", " ({reason})", "（{reason}）"));
                 }
                 (TransferStatus::Failed, Some(error))
             }
@@ -629,11 +629,9 @@ fn message_text(files: &HashMap<String, FileDto>) -> Option<String> {
 }
 
 /// What a request offers, as the shells label a drag, by the top-level
-/// entries: "IMG_0001.jpg", "文件夹 照片", "IMG_0001.jpg 等 3 个文件",
-/// "a 等 2 个文件夹" or "a 等 3 个文件或文件夹"; "照片 (folder)",
-/// "IMG_0001.jpg and 2 more files", "a and 1 more folder", "a and 2 more
-/// items"; "フォルダ「照片」", "IMG_0001.jpg など 3 個のファイル", "a など
-/// 2 個のフォルダ", "a など 3 個の項目".
+/// entries, in the current language: "IMG_0001.jpg", "Photos (folder)",
+/// "IMG_0001.jpg and 2 more files", "a and 1 more folder" or "a and 2 more
+/// items" in English; `label_in` has the Chinese and Japanese forms.
 fn label(files: &HashMap<String, FileDto>) -> String {
     label_in(crate::i18n::current(), files)
 }
@@ -720,17 +718,24 @@ mod tests {
 
     #[test]
     fn labels_by_top_level_entries() {
+        // English by default.
         assert_eq!(label(&files(&["IMG_2.jpg"])), "IMG_2.jpg");
-        assert_eq!(label(&files(&["IMG_2.jpg", "IMG_1.jpg", "IMG_3.jpg"])), "IMG_1.jpg 等 3 个文件");
-        assert_eq!(label(&files(&["照片/a.jpg", "照片/b/c.jpg"])), "文件夹 照片");
-        assert_eq!(label(&files(&["b/x", "a/y"])), "a 等 2 个文件夹");
-        assert_eq!(label(&files(&["b/x", "a.txt"])), "a.txt 等 2 个文件或文件夹");
+        assert_eq!(label(&files(&["IMG_2.jpg", "IMG_1.jpg", "IMG_3.jpg"])), "IMG_1.jpg and 2 more files");
+        assert_eq!(label(&files(&["Photos/a.jpg", "Photos/b/c.jpg"])), "Photos (folder)");
+        assert_eq!(label(&files(&["b/x", "a/y"])), "a and 1 more folder");
+        assert_eq!(label(&files(&["b/x", "a.txt"])), "a.txt and 1 more item");
         let en = |names: &[&str]| label_in(Lang::En, &files(names));
         assert_eq!(en(&["IMG_2.jpg"]), "IMG_2.jpg");
-        assert_eq!(en(&["照片/a.jpg"]), "照片 (folder)");
+        assert_eq!(en(&["Photos/a.jpg"]), "Photos (folder)");
         assert_eq!(en(&["b.jpg", "a.jpg"]), "a.jpg and 1 more file");
         assert_eq!(en(&["c/x", "b/x", "a/y"]), "a and 2 more folders");
         assert_eq!(en(&["b/x", "a.txt"]), "a.txt and 1 more item");
+        let zh = |names: &[&str]| label_in(Lang::Zh, &files(names));
+        assert_eq!(zh(&["IMG_2.jpg"]), "IMG_2.jpg");
+        assert_eq!(zh(&["照片/a.jpg", "照片/b/c.jpg"]), "文件夹 照片");
+        assert_eq!(zh(&["IMG_2.jpg", "IMG_1.jpg", "IMG_3.jpg"]), "IMG_1.jpg 等 3 个文件");
+        assert_eq!(zh(&["b/x", "a/y"]), "a 等 2 个文件夹");
+        assert_eq!(zh(&["b/x", "a.txt"]), "a.txt 等 2 个文件或文件夹");
         let ja = |names: &[&str]| label_in(Lang::Ja, &files(names));
         assert_eq!(ja(&["照片/a.jpg"]), "フォルダ「照片」");
         assert_eq!(ja(&["b.jpg", "a.jpg", "c.jpg"]), "a.jpg など 3 個のファイル");
@@ -740,7 +745,7 @@ mod tests {
 
     #[test]
     fn text_messages_are_a_single_text_file_with_a_preview() {
-        assert_eq!(message_text(&offer(&[("m.txt", "text/plain", Some("你好"))])).as_deref(), Some("你好"));
+        assert_eq!(message_text(&offer(&[("m.txt", "text/plain", Some("Hello"))])).as_deref(), Some("Hello"));
         assert_eq!(message_text(&offer(&[("m.txt", "text", Some("hi"))])).as_deref(), Some("hi"));
         assert_eq!(message_text(&offer(&[("m.txt", "text/plain", None)])), None);
         assert_eq!(message_text(&offer(&[("a.jpg", "image/jpeg", Some("x"))])), None);

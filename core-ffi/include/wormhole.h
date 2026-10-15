@@ -46,7 +46,7 @@ const char *wh_version(void);
  * Support/WormholeSend), `port` (default from settings.json, else 53320),
  * `portFallback` (move to the next free port pair when taken; false for the
  * apps), `alias` and `saveDir` (for this run instead of the saved settings),
- * `language` (of the messages: "en", "zh" or "ja"; Chinese if not given).
+ * `language` (of the messages: "en", "zh" or "ja"; English if not given).
  *
  * Returns `{"ok":true,"result":<settings.get>}` and sets `*core_out`, or
  * `{"ok":false,"error":"…"}` and sets `*core_out` to NULL. Free the string

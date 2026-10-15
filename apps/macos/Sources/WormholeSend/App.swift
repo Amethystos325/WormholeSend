@@ -37,7 +37,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Local Network access is denied (`LocalNetwork`): the menu says so.
     private var networkDenied = false
     private var menuIsOpen = false
-    /// Refreshes the open "配对新设备" submenu; what it shows now.
+    /// Refreshes the open "Pair New Device" submenu; what it shows now.
     private var nearbyRefresh: Task<Void, Never>?
     private var shownNearby: [String] = []
 
@@ -409,7 +409,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// 跟随系统, then each language in its own name, as on Windows.
+    /// "System", then each language in its own name, as on Windows.
     private func languageMenu() -> NSMenuItem {
         let item = NSMenuItem(title: tr("语言", "Language", "言語"), action: nil, keyEquivalent: "")
         item.image = icon("globe")

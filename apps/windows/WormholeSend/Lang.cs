@@ -7,10 +7,10 @@ namespace WormholeSend;
 /// The languages of the interface.
 enum UiLanguage { En, Zh, Ja }
 
-/// The interface language and its texts: `L.T("中文", "English", "日本語")`
-/// picks one, written out in all three where it is used, as `tr!` does in
-/// the core (which is told the same language). The language follows
-/// Windows' display language unless one is chosen in the settings.
+/// The interface language and its texts: `L.T(zh, en, ja)` picks one,
+/// written out in all three where it is used, as `tr!` does in the core
+/// (which is told the same language). The language follows Windows'
+/// display language unless one is chosen in the settings.
 static class L
 {
     const string Key = @"Software\WormholeSend";

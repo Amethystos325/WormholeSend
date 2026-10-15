@@ -40,7 +40,8 @@ abstract class PhaseContent : DockPanel
         Phase.Received when model.Transfer is { } t => new ReceivedContent(t, model.RevealReceived),
         Phase.PairRequest p => new PairRequestContent(p, model.AnswerPair),
         Phase.ReceiveRequest r => new ReceiveRequestContent(r, model),
-        // The one-line states; "无法发送" is 24 high, the others 28.
+        // The one-line states; the unavailable one ("Only files can be sent", …)
+        // is 24 high, the others 28.
         _ when StatusLines.For(model, phase) is { } line => new StatusLine(line, scale) { Height = phase is Phase.Unavailable ? 24 : 28 },
         _ => new EmptyContent(),
     };
@@ -215,8 +216,8 @@ sealed class DeviceTile : Border
 
 sealed class StatusLine : PhaseContent
 {
-    /// The trailing text gives way in the middle (a label keeps "等 3 个文件"),
-    /// or at its end.
+    /// The trailing text gives way in the middle (a label keeps "and 2 more
+    /// files"), or at its end.
     public StatusLine(StatusText line, double scale)
     {
         var (glyph, color, text, trailing, trimEnd) = line;
@@ -439,7 +440,7 @@ sealed class PairRequestContent : PhaseContent
 }
 
 /// A LocalSend device asks to send: what and how much, or the start of a
-/// text message, with 拒绝 / 接收 (忽略 / 复制 for a text). The decline button
+/// text message, with Decline / Accept (Ignore / Copy for a text). The decline button
 /// counts down the seconds until the core declines by itself.
 sealed class ReceiveRequestContent : PhaseContent
 {

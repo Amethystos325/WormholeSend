@@ -134,17 +134,17 @@ async fn route(inner: &Arc<Inner>, peer: &Peer, request: Request<Incoming>) -> R
             json(&serde_json::Value::Null)
         }
         (_, "/queue/join" | "/queue/wait" | "/queue/leave") if !paired() => {
-            error(StatusCode::FORBIDDEN, "本机没有与你配对")
+            error(StatusCode::FORBIDDEN, &tr!("本机没有与你配对", "This device isn't paired with you", "このデバイスはあなたとペアリングされていません"))
         }
         (Method::POST, "/queue/join") => match inner.queue.join(&peer.fingerprint) {
             Some(status) => json(&status),
-            None => error(StatusCode::SERVICE_UNAVAILABLE, "排队人数已满"),
+            None => error(StatusCode::SERVICE_UNAVAILABLE, &tr!("排队人数已满", "The queue is full", "待ち行列がいっぱいです")),
         },
         (Method::GET, "/queue/wait") => {
             let ticket = query.strip_prefix("ticket=").unwrap_or_default();
             match inner.queue.wait(ticket, &peer.fingerprint).await {
                 Some(status) => json(&status),
-                None => error(StatusCode::NOT_FOUND, "票号不存在或已过期"),
+                None => error(StatusCode::NOT_FOUND, &tr!("票号不存在或已过期", "No such ticket, or it has expired", "チケットが存在しないか、期限切れです")),
             }
         }
         (Method::POST, "/queue/leave") => match read::<QueueTicket>(request).await {

@@ -1,6 +1,5 @@
-//! `whs`: the Wormhole Send command line, for checking the core before the
-//! native apps exist. Pairing is manual for now (`whs trust add`); the 6-digit
-//! pairing comes with the control service.
+//! `whs`: the Wormhole Send command line, for trying the core without the
+//! native apps and for debugging connections.
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
@@ -15,17 +14,17 @@ use wormhole_core::trust::{self, TrustStore, TrustedDevice};
 use wormhole_core::{DeviceInfo, Kind, Node, NodeOptions};
 
 #[derive(Parser)]
-#[command(name = "whs", version, about = "Wormhole Send 命令行：在局域网内直接给已配对设备发文件，也能和 LocalSend 互传")]
+#[command(name = "whs", version, about = "Wormhole Send command line: send files straight to paired devices on the local network, and to and from LocalSend")]
 struct Cli {
-    /// 数据目录（身份、设置、信任库），默认在系统应用数据目录下的 WormholeSend
+    /// Data folder (identity, settings, trust store); by default WormholeSend in the system's app data folder
     #[arg(long, global = true, env = "WHS_HOME")]
     home: Option<PathBuf>,
 
-    /// 本次运行使用的传输端口（不保存）
+    /// Transfer port for this run (not saved)
     #[arg(long, global = true)]
     port: Option<u16>,
 
-    /// 以 JSON 行输出（给程序读取）
+    /// Print JSON lines (for programs to read)
     #[arg(long, global = true)]
     json: bool,
 
@@ -35,57 +34,57 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// 显示本机名称、指纹和设置
+    /// Show this device's name, fingerprint and settings
     Id,
 
-    /// 查看或修改设置
+    /// Show or change the settings
     Config {
-        /// 设备名称
+        /// Device name
         #[arg(long)]
         alias: Option<String>,
 
-        /// 收到的文件保存到哪里
+        /// Where received files are saved
         #[arg(long)]
         save_dir: Option<PathBuf>,
     },
 
-    /// 与附近的设备配对：双方核对同一个 6 位码
+    /// Pair with a nearby device: both sides check the same 6-digit code
     Pair {
-        /// 设备名称或指纹前缀（用 whs devices 查看）
+        /// Device name or fingerprint prefix (see whs devices)
         target: String,
     },
 
-    /// 解除与一台设备的配对，并通知对方
+    /// Unpair a device and tell it
     Unpair {
-        /// 设备名称或指纹前缀
+        /// Device name or fingerprint prefix
         target: String,
     },
 
-    /// 手动管理信任列表（调试用；正常请用 pair / unpair）
+    /// Manage the trust list by hand (for debugging; normally use pair / unpair)
     #[command(subcommand)]
     Trust(TrustCommand),
 
-    /// 搜索局域网内的设备
+    /// Search for devices on the local network
     Devices {
-        /// 搜索多少秒
+        /// How many seconds to search
         #[arg(long, default_value_t = 3)]
         wait: u64,
     },
 
-    /// 持续运行，自动接收已配对设备发来的文件，LocalSend 设备发来时询问（Ctrl+C 退出）
+    /// Keep running: receive files from paired devices automatically, ask when a LocalSend device sends (Ctrl+C to quit)
     Receive {
-        /// 本次运行的保存位置（不保存到设置）
+        /// Save folder for this run (not saved to the settings)
         #[arg(long)]
         save_dir: Option<PathBuf>,
     },
 
-    /// 把文件或文件夹发给已配对设备，或附近的 LocalSend 设备（对方确认后接收）
+    /// Send files or folders to a paired device, or to a nearby LocalSend device (received once its user accepts)
     Send {
-        /// 目标设备名称或指纹前缀；不填则发给默认设备
+        /// Target device name or fingerprint prefix; the default device if left out
         #[arg(short, long)]
         to: Option<String>,
 
-        /// 要发送的文件或文件夹
+        /// Files or folders to send
         #[arg(required = true)]
         paths: Vec<PathBuf>,
     },
@@ -93,26 +92,26 @@ enum Command {
 
 #[derive(Subcommand)]
 enum TrustCommand {
-    /// 列出已配对设备
+    /// List paired devices
     List,
 
-    /// 信任一台设备：完整指纹，或附近设备的名称 / 指纹前缀
+    /// Trust a device: a full fingerprint, or a nearby device's name / fingerprint prefix
     Add {
         target: String,
 
-        /// 给设备起的名字（默认用对方自己的名字）
+        /// Name for the device (by default its own name)
         #[arg(long)]
         alias: Option<String>,
 
-        /// 设备地址 host:port，组播不通时用来直连
+        /// Device address host:port, to connect directly when multicast doesn't work
         #[arg(long)]
         addr: Option<String>,
     },
 
-    /// 取消信任一台设备
+    /// Stop trusting a device
     Remove { target: String },
 
-    /// 设为默认设备
+    /// Make it the default device
     Default { target: String },
 }
 
@@ -131,7 +130,7 @@ async fn main() {
     match run(cli).await {
         Ok(code) => std::process::exit(code),
         Err(err) => {
-            eprintln!("错误：{err:#}");
+            eprintln!("Error: {err:#}");
             std::process::exit(1);
         }
     }
@@ -172,11 +171,11 @@ fn show_id(out: &Printer, home: &Path, settings: &Settings) -> anyhow::Result<i3
             "home": home,
         }));
     } else {
-        println!("设备名称  {}", identity.alias);
-        println!("指纹      {}", identity.fingerprint);
-        println!("传输端口  {}", settings.port);
-        println!("保存位置  {}", settings.save_dir.display());
-        println!("数据目录  {}", home.display());
+        println!("Device name    {}", identity.alias);
+        println!("Fingerprint    {}", identity.fingerprint);
+        println!("Transfer port  {}", settings.port);
+        println!("Save folder    {}", settings.save_dir.display());
+        println!("Data folder    {}", home.display());
     }
     Ok(0)
 }
@@ -192,7 +191,7 @@ fn configure(
     if let Some(alias) = alias {
         let alias = alias.trim().to_string();
         if alias.is_empty() {
-            bail!("设备名称不能为空");
+            bail!("The device name can't be empty");
         }
         settings.alias = alias;
     }
@@ -209,10 +208,10 @@ fn configure(
         out.json_line(&settings);
     } else {
         if changed {
-            println!("设置已保存");
+            println!("Settings saved");
         }
-        println!("设备名称  {}", settings.alias);
-        println!("保存位置  {}", settings.save_dir.display());
+        println!("Device name  {}", settings.alias);
+        println!("Save folder  {}", settings.save_dir.display());
     }
     Ok(0)
 }
@@ -229,12 +228,12 @@ async fn trust_command(
             if out.json {
                 out.json_line(&store.devices());
             } else if store.devices().is_empty() {
-                println!("还没有配对设备。用 whs pair 和附近的设备配对。");
+                println!("No paired devices yet. Use whs pair to pair with a nearby device.");
             } else {
                 for device in store.devices() {
                     let address = match (&device.last_host, device.last_port) {
                         (Some(host), Some(port)) => format!("{host}:{port}"),
-                        _ => "地址未知".to_string(),
+                        _ => "address unknown".to_string(),
                     };
                     println!(
                         "{} {}  {}  {}{}",
@@ -242,7 +241,7 @@ async fn trust_command(
                         device.alias,
                         trust::short_fingerprint(&device.fingerprint),
                         address,
-                        if device.needs_repair { "  （需要重新配对）" } else { "" }
+                        if device.needs_repair { "  (needs pairing again)" } else { "" }
                     );
                 }
             }
@@ -256,18 +255,18 @@ async fn trust_command(
             let address = addr.as_deref().map(parse_addr).transpose()?;
             let own = Identity::read_fingerprint(home)?;
             let mut device = if trust::is_full_fingerprint(&target) {
-                TrustedDevice::new(&target, alias.clone().unwrap_or_else(|| "未命名设备".to_string()))
+                TrustedDevice::new(&target, alias.clone().unwrap_or_else(|| "Unnamed device".to_string()))
             } else {
                 let found = discover(home, settings, 3).await?;
                 let info = trust::resolve_device(&found, &target, |d| (&d.alias, &d.fingerprint))
-                    .map_err(|err| anyhow::anyhow!("{err}（用 whs devices 查看附近设备）"))?;
+                    .map_err(|err| anyhow::anyhow!("{err} (see nearby devices with whs devices)"))?;
                 let mut device = TrustedDevice::new(&info.fingerprint, info.alias.clone());
                 device.last_host = info.host.clone();
                 device.last_port = info.port;
                 device
             };
             if own.as_deref() == Some(device.fingerprint.as_str()) {
-                bail!("这是本机自己的指纹");
+                bail!("That is this device's own fingerprint");
             }
             if let Some(alias) = alias {
                 device.alias = alias;
@@ -286,11 +285,11 @@ async fn trust_command(
                 out.json_line(&serde_json::json!({ "fingerprint": fingerprint, "alias": alias }));
             } else {
                 println!(
-                    "已信任 {alias}（{}）{}",
+                    "Trusted {alias} ({}){}",
                     trust::short_fingerprint(&fingerprint),
-                    if is_default { "，并设为默认设备" } else { "" }
+                    if is_default { ", and made it the default device" } else { "" }
                 );
-                println!("提示：对方也要信任本机，才能把文件发过来。");
+                println!("Note: the other device has to trust this one too before it can send files here.");
             }
             Ok(0)
         }
@@ -304,7 +303,7 @@ async fn trust_command(
             })?
             .map_err(anyhow::Error::msg)?;
             if let Some(device) = removed {
-                out.say(&format!("已取消信任 {}", device.alias));
+                out.say(&format!("No longer trusting {}", device.alias));
             }
             Ok(0)
         }
@@ -317,7 +316,7 @@ async fn trust_command(
                 Err(err) => (false, Err(err)),
             })?
             .map_err(anyhow::Error::msg)?;
-            out.say(&format!("默认设备：{alias}"));
+            out.say(&format!("Default device: {alias}"));
             Ok(0)
         }
     }
@@ -341,7 +340,7 @@ async fn discover(home: &Path, settings: Settings, wait: u64) -> anyhow::Result<
 
 async fn devices(out: &Printer, home: PathBuf, settings: Settings, wait: u64) -> anyhow::Result<i32> {
     if !out.json {
-        eprintln!("正在搜索附近设备（{wait} 秒）…");
+        eprintln!("Searching for nearby devices ({wait} s)…");
     }
     let devices = discover(&home, settings, wait).await?;
     if out.json {
@@ -349,7 +348,7 @@ async fn devices(out: &Printer, home: PathBuf, settings: Settings, wait: u64) ->
         return Ok(0);
     }
     if devices.is_empty() {
-        println!("没有找到设备。确认对方正在运行 whs receive，并且在同一个网络。");
+        println!("No devices found. Make sure the other device is running whs receive and is on the same network.");
     }
     for device in &devices {
         let mark = match (device.is_default, device.paired) {
@@ -364,19 +363,19 @@ async fn devices(out: &Printer, home: PathBuf, settings: Settings, wait: u64) ->
         println!(
             "{mark} {}{}  {}  {}  {address}{}",
             device.alias,
-            if device.kind == Kind::LocalSend { "（LocalSend）" } else { "" },
-            if device.online { "在线" } else { "离线" },
+            if device.kind == Kind::LocalSend { " (LocalSend)" } else { "" },
+            if device.online { "online" } else { "offline" },
             trust::short_fingerprint(&device.fingerprint),
-            if device.needs_repair { "  （需要重新配对）" } else { "" }
+            if device.needs_repair { "  (needs pairing again)" } else { "" }
         );
     }
     // Explain only the marks that appear.
     let mut legend = Vec::new();
     if devices.iter().any(|device| device.is_default) {
-        legend.push("★ 默认设备");
+        legend.push("★ default device");
     }
     if devices.iter().any(|device| device.paired && !device.is_default) {
-        legend.push("✓ 已配对");
+        legend.push("✓ paired");
     }
     if !legend.is_empty() {
         println!("{}", legend.join("  "));
@@ -396,13 +395,13 @@ async fn receive(mut out: Printer, home: PathBuf, settings: Settings) -> anyhow:
     if !out.json {
         let identity = node.identity();
         println!(
-            "{}（{}）正在接收，端口 {}，保存到 {}",
+            "{} ({}) is receiving on port {}, saving to {}",
             identity.alias,
             trust::short_fingerprint(&identity.fingerprint),
             identity.port,
             save_dir.display()
         );
-        println!("已配对设备发来的文件自动接收，LocalSend 设备发来时询问。按 Ctrl+C 退出。");
+        println!("Files from paired devices are received automatically; you're asked when a LocalSend device sends. Press Ctrl+C to quit.");
     }
     // A pairing code or a LocalSend request waiting for y/n on stdin.
     let mut awaiting: Option<Awaiting> = None;
@@ -417,13 +416,13 @@ async fn receive(mut out: Printer, home: PathBuf, settings: Settings) -> anyhow:
                     CoreEvent::PairCode { pair_id, .. } => {
                         awaiting = Some(Awaiting::Pair(pair_id.clone()));
                         if !out.json {
-                            println!("输入 y 确认配对，n 拒绝：");
+                            println!("Type y to confirm the pairing, n to decline:");
                         }
                     }
                     CoreEvent::ReceiveRequest { request_id, text, .. } => {
                         awaiting = Some(Awaiting::Receive(request_id.clone(), text.clone()));
                         if !out.json {
-                            println!("输入 y 接收，n 拒绝（1 分钟内不回答视为拒绝）：");
+                            println!("Type y to receive, n to decline (no answer within 1 minute declines):");
                         }
                     }
                     CoreEvent::PairResult { pair_id: id, .. } | CoreEvent::ReceiveClosed { request_id: id, .. }
@@ -444,9 +443,9 @@ async fn receive(mut out: Printer, home: PathBuf, settings: Settings) -> anyhow:
                     Some(Awaiting::Receive(request_id, text)) => {
                         let accept = is_yes(&line);
                         if !node.respond_receive(&request_id, accept) {
-                            out.say("这个请求已经结束");
+                            out.say("This request has already ended");
                         } else if accept && let Some(text) = text {
-                            out.say(&format!("收到的文字：\n{text}"));
+                            out.say(&format!("Received text:\n{text}"));
                         }
                     }
                     None => {}
@@ -470,7 +469,7 @@ async fn send(
     let mut interrupt = Interrupt::new()?;
     for path in &paths {
         if !path.exists() {
-            bail!("找不到 {}", path.display());
+            bail!("Can't find {}", path.display());
         }
     }
     let store = TrustStore::load(&home)?;
@@ -479,7 +478,7 @@ async fn send(
         None => Some(
             store
                 .default_device()
-                .context("还没有配对设备。先用 whs pair 配对，或用 --to 指定附近的 LocalSend 设备")?,
+                .context("No paired devices yet. Pair with whs pair first, or name a nearby LocalSend device with --to")?,
         ),
     };
     let paired = paired.map(|device| device.fingerprint.clone());
@@ -495,7 +494,7 @@ async fn send(
         // Not paired: a LocalSend device nearby.
         (None, Some(query)) => {
             if !out.json {
-                eprintln!("正在搜索附近的 LocalSend 设备…");
+                eprintln!("Searching for nearby LocalSend devices…");
             }
             let deadline = Instant::now() + Duration::from_secs(3);
             node.refresh().await;
@@ -509,7 +508,7 @@ async fn send(
                 Ok(device) => device.fingerprint.clone(),
                 Err(err) => {
                     node.stop().await;
-                    bail!("{err}（不是已配对设备，附近也没有这台 LocalSend 设备）");
+                    bail!("{err} (not a paired device, and no such LocalSend device nearby)");
                 }
             }
         }
@@ -586,7 +585,7 @@ async fn pair(mut out: Printer, home: PathBuf, settings: Settings, target: Strin
     })
     .await?;
     if !out.json {
-        eprintln!("正在搜索附近设备…");
+        eprintln!("Searching for nearby devices…");
     }
     let deadline = Instant::now() + Duration::from_secs(3);
     node.refresh().await;
@@ -594,7 +593,7 @@ async fn pair(mut out: Printer, home: PathBuf, settings: Settings, target: Strin
     let devices = node.devices();
     let started = match trust::resolve_device(&devices, &target, |d| (&d.alias, &d.fingerprint)) {
         Ok(device) => node.pair(&device.fingerprint),
-        Err(err) => Err(anyhow::anyhow!("{err}（用 whs devices 查看附近设备）")),
+        Err(err) => Err(anyhow::anyhow!("{err} (see nearby devices with whs devices)")),
     };
     let pair_id = match started {
         Ok(pair_id) => pair_id,
@@ -614,7 +613,7 @@ async fn pair(mut out: Printer, home: PathBuf, settings: Settings, target: Strin
                         out.event(&event, false);
                         asking = true;
                         if !out.json {
-                            println!("两边的数字一致吗？输入 y 确认，n 拒绝：");
+                            println!("Do the numbers match on both devices? Type y to confirm, n to decline:");
                         }
                     }
                     CoreEvent::PairResult { pair_id: id, ok, .. } if *id == pair_id => {
@@ -630,7 +629,7 @@ async fn pair(mut out: Printer, home: PathBuf, settings: Settings, target: Strin
                 let accept = line.as_deref().is_some_and(is_yes);
                 node.pair_confirm(&pair_id, accept)?;
                 if accept && !out.json {
-                    println!("等待对方确认…");
+                    println!("Waiting for the other device to confirm…");
                 }
             }
             _ = interrupt.recv() => {
@@ -659,9 +658,9 @@ async fn unpair(out: &Printer, home: PathBuf, settings: Settings, target: String
     let result = node.unpair(&device.fingerprint).await;
     node.stop().await;
     let message = match result? {
-        Some(true) => format!("已解除与 {} 的配对，并已通知对方", device.alias),
-        Some(false) => format!("已解除与 {} 的配对；对方现在不在线，下次发现它时会通知", device.alias),
-        None => format!("{} 没有配对", device.alias),
+        Some(true) => format!("Unpaired {} and told it", device.alias),
+        Some(false) => format!("Unpaired {}; it's offline now and will be told the next time it's found", device.alias),
+        None => format!("{} isn't paired", device.alias),
     };
     out.say(&message);
     Ok(0)
@@ -681,8 +680,9 @@ fn stdin_lines() -> tokio::sync::mpsc::UnboundedReceiver<String> {
     rx
 }
 
+/// "y" or "yes", in any case.
 fn is_yes(line: &str) -> bool {
-    matches!(line.trim().to_lowercase().as_str(), "y" | "yes" | "是")
+    matches!(line.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
 fn format_code(code: &str) -> String {
@@ -695,8 +695,8 @@ fn format_code(code: &str) -> String {
 fn parse_addr(addr: &str) -> anyhow::Result<(String, u16)> {
     let (host, port) = addr
         .rsplit_once(':')
-        .context("地址格式应为 host:port，例如 192.168.1.20:53320")?;
-    let port = port.parse().context("端口必须是数字")?;
+        .context("The address should be host:port, e.g. 192.168.1.20:53320")?;
+    let port = port.parse().context("The port must be a number")?;
     Ok((host.trim_matches(['[', ']']).to_string(), port))
 }
 
@@ -771,11 +771,11 @@ impl Printer {
                 }
                 let fp = trust::short_fingerprint(id);
                 let text = match (paired, kind, online) {
-                    (true, _, true) => format!("已配对设备在线：{alias}（{fp}）"),
-                    (true, _, false) => format!("已配对设备离线：{alias}（{fp}）"),
-                    (false, Kind::LocalSend, true) => format!("LocalSend 设备在线：{alias}（{fp}）"),
-                    (false, Kind::LocalSend, false) => format!("LocalSend 设备离线：{alias}（{fp}）"),
-                    (false, Kind::Wormhole, _) => format!("发现未配对设备：{alias}（{fp}）"),
+                    (true, _, true) => format!("Paired device online: {alias} ({fp})"),
+                    (true, _, false) => format!("Paired device offline: {alias} ({fp})"),
+                    (false, Kind::LocalSend, true) => format!("LocalSend device online: {alias} ({fp})"),
+                    (false, Kind::LocalSend, false) => format!("LocalSend device offline: {alias} ({fp})"),
+                    (false, Kind::Wormhole, _) => format!("Unpaired device found: {alias} ({fp})"),
                 };
                 self.line(&text);
             }
@@ -790,10 +790,10 @@ impl Printer {
                 self.started.insert(id.clone(), Instant::now());
                 let text = match direction {
                     Direction::Send => {
-                        format!("→ 正在发送 {files} 个文件（{}）到 {alias}", format_bytes(*total))
+                        format!("→ Sending {} ({}) to {alias}", count_files(*files), format_bytes(*total))
                     }
                     Direction::Receive => {
-                        format!("← 正在接收 {alias} 发来的 {files} 个文件（{}）", format_bytes(*total))
+                        format!("← Receiving {} ({}) from {alias}", count_files(*files), format_bytes(*total))
                     }
                 };
                 self.line(&text);
@@ -832,11 +832,12 @@ impl Printer {
                 let took = self
                     .started
                     .remove(id)
-                    .map(|started| format!("，用时 {:.1} 秒", started.elapsed().as_secs_f64()))
+                    .map(|started| format!(", in {:.1} s", started.elapsed().as_secs_f64()))
                     .unwrap_or_default();
                 let text = match (status, direction) {
                     (TransferStatus::Done, Direction::Send) => format!(
-                        "✓ 已发送 {files_done} 个文件到 {alias}（{}{took}）",
+                        "✓ Sent {} to {alias} ({}{took})",
+                        count_files(*files_done),
                         format_bytes(*bytes)
                     ),
                     (TransferStatus::Done, Direction::Receive) => {
@@ -844,23 +845,24 @@ impl Printer {
                             .iter()
                             .map(|path| path.display().to_string())
                             .collect::<Vec<_>>()
-                            .join("、");
+                            .join(", ");
                         format!(
-                            "✓ 已收到 {alias} 的 {files_done} 个文件（{}{took}），保存为 {saved}",
+                            "✓ Received {} from {alias} ({}{took}), saved as {saved}",
+                            count_files(*files_done),
                             format_bytes(*bytes)
                         )
                     }
                     (status, _) => {
                         let label = match status {
-                            TransferStatus::Cancelled => "已取消",
-                            TransferStatus::Rejected => "被拒绝",
-                            TransferStatus::Declined => "对方拒绝",
-                            TransferStatus::Busy => "对方忙",
-                            TransferStatus::Offline => "设备离线",
-                            _ => "失败",
+                            TransferStatus::Cancelled => "Cancelled",
+                            TransferStatus::Rejected => "Rejected",
+                            TransferStatus::Declined => "Declined",
+                            TransferStatus::Busy => "Busy",
+                            TransferStatus::Offline => "Offline",
+                            _ => "Failed",
                         };
                         match error {
-                            Some(error) => format!("✗ {label}：{error}"),
+                            Some(error) => format!("✗ {label}: {error}"),
                             None => format!("✗ {label}"),
                         }
                     }
@@ -873,10 +875,10 @@ impl Printer {
                 ip,
             } => {
                 let fp = trust::short_fingerprint(device_id);
-                self.line(&format!("✗ 已拒绝未配对设备 {alias}（{fp}，{ip}）的发送请求"));
+                self.line(&format!("✗ Declined a send request from unpaired device {alias} ({fp}, {ip})"));
             }
             CoreEvent::TransferWaiting { alias, .. } => {
-                self.line(&format!("⏳ 等待 {alias} 接收…"));
+                self.line(&format!("⏳ Waiting for {alias} to accept…"));
             }
             CoreEvent::ReceiveRequest {
                 device_id,
@@ -888,39 +890,48 @@ impl Printer {
             } => {
                 let fp = trust::short_fingerprint(device_id);
                 self.line(&match text {
-                    Some(text) => format!("{alias}（LocalSend，{fp}）发来一段文字：\n{text}"),
-                    None => format!("{alias}（LocalSend，{fp}）想发送 {label}（{}）", format_bytes(*total)),
+                    Some(text) => format!("{alias} (LocalSend, {fp}) sent a text message:\n{text}"),
+                    None => format!("{alias} (LocalSend, {fp}) wants to send {label} ({})", format_bytes(*total)),
                 });
             }
             CoreEvent::ReceiveClosed { reason, .. } => {
                 self.line(match reason.as_str() {
-                    "timeout" => "✗ 1 分钟内没有回答，已拒绝",
-                    _ => "✗ 对方取消了发送",
+                    "timeout" => "✗ No answer within 1 minute; declined",
+                    _ => "✗ The sender cancelled",
                 });
             }
             CoreEvent::TransferQueued { position, .. } => {
-                self.line(&format!("⏳ 对方正在接收其他设备的文件，排队中 · 前面还有 {position} 个"));
+                self.line(&format!("⏳ The other device is receiving from another device; queued · {position} ahead"));
             }
             CoreEvent::ReceiveWaiting { count } => match count {
-                0 => self.line("排队已清空"),
-                count => self.line(&format!("还有 {count} 个设备在排队")),
+                0 => self.line("The queue is empty"),
+                1 => self.line("1 device is waiting in the queue"),
+                count => self.line(&format!("{count} devices are waiting in the queue")),
             },
             CoreEvent::PairIncoming { device_id, alias, .. } => {
                 let fp = trust::short_fingerprint(device_id);
-                self.line(&format!("{alias}（{fp}）请求配对"));
+                self.line(&format!("{alias} ({fp}) wants to pair"));
             }
             CoreEvent::PairCode { alias, code, .. } => {
-                self.line(&format!("配对码：{}　请和 {alias} 屏幕上的数字核对", format_code(code)));
+                self.line(&format!("Pairing code: {}  check it against the number on {alias}'s screen", format_code(code)));
             }
             CoreEvent::PairResult { alias, ok, reason, .. } => match ok {
-                true => self.line(&format!("✓ 已与 {alias} 配对，之后互传文件不用确认")),
-                false => self.line(&format!("✗ 配对失败：{}", reason.as_deref().unwrap_or("未知原因"))),
+                true => self.line(&format!("✓ Paired with {alias}; files between you no longer need confirming")),
+                false => self.line(&format!("✗ Pairing failed: {}", reason.as_deref().unwrap_or("unknown reason"))),
             },
             CoreEvent::DeviceUnpaired { alias, .. } => {
-                self.line(&format!("{alias} 解除了与本机的配对"));
+                self.line(&format!("{alias} unpaired from this device"));
             }
             CoreEvent::Error { message } => self.line(&format!("! {message}")),
         }
+    }
+}
+
+/// "1 file", "3 files".
+fn count_files(count: usize) -> String {
+    match count {
+        1 => "1 file".to_string(),
+        count => format!("{count} files"),
     }
 }
 
